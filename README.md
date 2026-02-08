@@ -10,6 +10,14 @@ This repo generates a static HTML page that tracks your fantasy draft points bas
 - Points are calculated using the scoring weights in `olympic_test.py`.
 - A table and a Plotly chart are exported to `docs/index.html`.
 
+## Setup
+
+```bash
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+python olympic_test.py
+
 ## Update the data
 
 1. Edit `data/friends.csv` with your friends and their countries.
