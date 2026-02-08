@@ -5,6 +5,7 @@ This repo generates a static HTML page that tracks your fantasy draft points bas
 ## How it works
 
 - Medal totals are pulled from the official Olympics API.
+- If the API is unavailable, the script falls back to `data/medals_cache.csv`.
 - Friends are mapped to countries via `data/friends.csv`.
 - Points are calculated using the scoring weights in `olympic_test.py`.
 - A table and a Plotly chart are exported to `docs/index.html`.
@@ -27,6 +28,8 @@ python olympic_test.py
 ```
 
 That will regenerate `docs/index.html`.
+
+If you need to run the script offline, update `data/medals_cache.csv` with the latest medal totals and rerun the script. The cache is automatically refreshed whenever the API request succeeds.
 
 ## Publish with GitHub Pages
 

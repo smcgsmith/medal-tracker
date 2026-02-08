@@ -16,6 +16,7 @@ HEADERS = {
 REPO_ROOT = Path(__file__).resolve().parent
 DATA_DIR = REPO_ROOT / "data"
 FRIENDS_FILE = DATA_DIR / "friends.csv"
+MEDALS_CACHE_FILE = DATA_DIR / "medals_cache.csv"
 
 OUTPUT_DIR = REPO_ROOT / "docs"
 OUTPUT_FILE = OUTPUT_DIR / "index.html"
@@ -53,7 +54,15 @@ def fetch_medals():
             }
         )
 
-    return pd.DataFrame(rows)
+    medals_df = pd.DataFrame(rows)
+    medals_df.to_csv(MEDALS_CACHE_FILE, index=False)
+    return medals_df
+
+
+def load_medals_cache():
+    if MEDALS_CACHE_FILE.exists():
+        return pd.read_csv(MEDALS_CACHE_FILE)
+    return None
 
 
 # -----------------------------
@@ -179,7 +188,13 @@ if __name__ == "__main__":
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-    medals_df = fetch_medals()
+    try:
+        medals_df = fetch_medals()
+    except requests.exceptions.RequestException:
+        medals_df = load_medals_cache()
+        if medals_df is None:
+            raise
+        print("Warning: using cached medal data (network request failed).")
     friends_df = load_friends()
     scored_df = build_friend_scores(friends_df, medals_df)
 
