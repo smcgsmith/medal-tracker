@@ -446,15 +446,25 @@ if __name__ == "__main__":
     friends_df = load_friends()
     scored_df = build_friend_scores(friends_df, medals_df)
 
+    def noc_to_flag(noc):
+        if not isinstance(noc, str) or len(noc) != 3:
+            return ""
+        # Convert ISO country code to emoji flag
+        code = noc[:2].upper()
+        return "".join(chr(127397 + ord(c)) for c in code)
+
     def build_pretty_table(df):
         rows = []
         for i, row in df.reset_index(drop=True).iterrows():
             rank = i + 1
 
+            flag1 = noc_to_flag(row["noc_1"])
+            flag2 = noc_to_flag(row["noc_2"])
+
             countries_html = f"""
             <div class="country-block">
-                <div>🇨🇦 {row['country_1']} — 🥇{row['gold_1']} 🥈{row['silver_1']} 🥉{row['bronze_1']}</div>
-                <div>🇨🇦 {row['country_2']} — 🥇{row['gold_2']} 🥈{row['silver_2']} 🥉{row['bronze_2']}</div>
+                <div>{flag1} {row['country_1']} — 🥇{row['gold_1']} 🥈{row['silver_1']} 🥉{row['bronze_1']}</div>
+                <div>{flag2} {row['country_2']} — 🥇{row['gold_2']} 🥈{row['silver_2']} 🥉{row['bronze_2']}</div>
             </div>
             """
 
