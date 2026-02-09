@@ -16,6 +16,33 @@ DEFAULT_API_URLS = [
     "https://olympics.com/en/olympic-games/milano-cortina-2026/medals",
 ]
 
+COUNTRY_TO_NOC = {
+    "Norway": "NOR",
+    "United States": "USA",
+    "Italy": "ITA",
+    "Japan": "JPN",
+    "Austria": "AUT",
+    "Germany": "GER",
+    "Czech Republic": "CZE",
+    "France": "FRA",
+    "Sweden": "SWE",
+    "Switzerland": "SUI",
+    "Canada": "CAN",
+    "Netherlands": "NED",
+    "China": "CHN",
+    "Poland": "POL",
+    "Korea": "KOR",
+    "Finland": "FIN",
+    "Slovakia": "SVK",
+    "Belgium": "BEL",
+    "Hungary": "HUN",
+    "New Zealand": "NZL",
+    "Australia": "AUS",
+}
+
+
+WIKI_MEDAL_URL = "https://en.wikipedia.org/wiki/2026_Winter_Olympics#Medal_table"
+
 ENV_API_URLS = os.environ.get("MEDALS_API_URLS")
 API_URLS = (
     [url.strip() for url in ENV_API_URLS.split(",") if url.strip()]
@@ -124,40 +151,68 @@ def parse_medals_payload(payload):
             return rows
     return []
 
-
 def fetch_medals():
-    last_error = None
-    for url in API_URLS:
-        try:
-            response = requests.get(url, headers=HEADERS, timeout=20)
-            response.raise_for_status()
-            content_type = response.headers.get("content-type", "")
-            if "application/json" in content_type or response.text.startswith(("{", "[")):
-                rows = parse_medals_payload(response.json())
-            else:
-                rows = parse_medals_from_html(response.text)
+    try:
+        response = requests.get(WIKI_MEDAL_URL, headers=HEADERS, timeout=20)
+        response.raise_for_status()
 
-            if not rows:
-                raise ValueError(f"No medal rows found in response from {url}")
+        tables = pd.read_html(response.text)
 
-            normalized_rows = [normalize_medal_row(row) for row in rows]
-            medals_df = pd.DataFrame(normalized_rows)
-            medals_df = medals_df[medals_df["noc"].notna() & (medals_df["noc"] != "")]
-            medals_df["total"] = medals_df["total"].fillna(
-                medals_df[["gold", "silver", "bronze"]].sum(axis=1)
-            )
-            medals_df[["gold", "silver", "bronze", "total"]] = (
-                medals_df[["gold", "silver", "bronze", "total"]].fillna(0).astype(int)
-            )
-            medals_df.to_csv(MEDALS_CACHE_FILE, index=False)
-            print(f"Fetched medals from {url}")
-            return medals_df
-        except (requests.exceptions.RequestException, ValueError, json.JSONDecodeError) as exc:
-            last_error = exc
-            print(f"Warning: medal fetch failed for {url}: {exc}")
+        medal_table = None
+        for table in tables:
+            cols = [str(c).lower() for c in table.columns]
+            if "gold" in cols and "silver" in cols and "bronze" in cols:
+                medal_table = table
+                break
 
-    raise last_error
+        if medal_table is None:
+            raise ValueError("Medal table not found on Wikipedia page")
 
+        # Normalize column names
+        medal_table.columns = [str(c).lower() for c in medal_table.columns]
+
+        # Remove totals row
+        medal_table = medal_table[
+            ~medal_table.iloc[:, 0].astype(str).str.contains("total", case=False, na=False)
+        ]
+
+        # Extract country name from NOC column
+        country_col = None
+        for col in medal_table.columns:
+            if "noc" in col:
+                country_col = col
+                break
+
+        if country_col is None:
+            raise ValueError("NOC column not found")
+
+        medal_table["country"] = (
+            medal_table[country_col]
+            .astype(str)
+            .str.replace(r"\*+", "", regex=True)
+            .str.strip()
+        )
+
+        # Map to NOC codes
+        medal_table["noc"] = medal_table["country"].map(COUNTRY_TO_NOC)
+
+        medals_df = medal_table[
+            ["noc", "country", "gold", "silver", "bronze", "total"]
+        ].copy()
+
+        medals_df[["gold", "silver", "bronze", "total"]] = (
+            medals_df[["gold", "silver", "bronze", "total"]]
+            .fillna(0)
+            .astype(int)
+        )
+
+        medals_df.to_csv(MEDALS_CACHE_FILE, index=False)
+        print("Fetched medals from Wikipedia")
+        return medals_df
+
+    except Exception as e:
+        print("Wikipedia fetch failed:", e)
+        raise
 
 def load_medals_cache():
     if MEDALS_CACHE_FILE.exists():
@@ -221,6 +276,13 @@ def build_friend_scores(friends_df, medals_df):
         + merged["silver_2"] * SCORING_WEIGHTS["silver"]
         + merged["bronze_2"] * SCORING_WEIGHTS["bronze"]
     )
+
+    # ---------------------------------
+    # Norway penalty: halve only Norway points
+    # ---------------------------------
+    merged.loc[merged["noc_1"] == "NOR", "points_1"] *= 0.5
+    merged.loc[merged["noc_2"] == "NOR", "points_2"] *= 0.5
+
     merged["points_total"] = merged["points_1"] + merged["points_2"]
     merged["total_medals"] = merged["total_1"] + merged["total_2"]
 
@@ -286,7 +348,7 @@ def make_plot(df):
             )
 
     fig.update_layout(
-        title="Fantasy Draft — Points by Friend",
+        title="Milano-Cortina 2026 Fantasy Country Draft",
         xaxis_title="Points",
         yaxis_title="",
         template="simple_white",
@@ -317,6 +379,39 @@ def build_html(table_html, plot_html, last_updated):
     th {{ background: #f5f5f5; }}
     .container {{ max-width: 1000px; margin: 0 auto; }}
     .section {{ margin-top: 32px; }}
+    .leaderboard {{
+        display: flex;
+        justify-content: space-around;
+        background: #f7f7f7;
+        padding: 16px;
+        border-radius: 10px;
+        margin-bottom: 24px;
+        font-size: 1.2em;
+    }}
+
+    .leader {{
+        text-align: center;
+    }}
+
+    .medal {{
+        font-size: 1.5em;
+        margin-right: 6px;
+    }}
+
+    .scoreboard {{
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 20px;
+    }}
+
+    .scoreboard th, .scoreboard td {{
+        padding: 12px;
+        border-bottom: 1px solid #e0e0e0;
+    }}
+
+    .country-block div {{
+        margin: 2px 0;
+    }}
   </style>
 </head>
 <body>
@@ -329,10 +424,6 @@ def build_html(table_html, plot_html, last_updated):
       {table_html}
     </div>
 
-    <div class=\"section\">
-      <h2>Points by Friend</h2>
-      {plot_html}
-    </div>
   </div>
 </body>
 </html>"""
@@ -355,47 +446,72 @@ if __name__ == "__main__":
     friends_df = load_friends()
     scored_df = build_friend_scores(friends_df, medals_df)
 
-    table_df = scored_df[
-        [
-            "friend",
-            "country_1",
-            "noc_1",
-            "gold_1",
-            "silver_1",
-            "bronze_1",
-            "total_1",
-            "country_2",
-            "noc_2",
-            "gold_2",
-            "silver_2",
-            "bronze_2",
-            "total_2",
-            "points_total",
-        ]
-    ].rename(
-        columns={
-            "friend": "Friend",
-            "country_1": "Country 1",
-            "noc_1": "NOC 1",
-            "gold_1": "Gold 1",
-            "silver_1": "Silver 1",
-            "bronze_1": "Bronze 1",
-            "total_1": "Total 1",
-            "country_2": "Country 2",
-            "noc_2": "NOC 2",
-            "gold_2": "Gold 2",
-            "silver_2": "Silver 2",
-            "bronze_2": "Bronze 2",
-            "total_2": "Total 2",
-            "points_total": "Total Points",
-        }
-    )
-    table_html = table_df.to_html(index=False, classes="dataframe")
+    def build_pretty_table(df):
+        rows = []
+        for i, row in df.reset_index(drop=True).iterrows():
+            rank = i + 1
+
+            countries_html = f"""
+            <div class="country-block">
+                <div>🇨🇦 {row['country_1']} — 🥇{row['gold_1']} 🥈{row['silver_1']} 🥉{row['bronze_1']}</div>
+                <div>🇨🇦 {row['country_2']} — 🥇{row['gold_2']} 🥈{row['silver_2']} 🥉{row['bronze_2']}</div>
+            </div>
+            """
+
+            rows.append(f"""
+            <tr>
+                <td>{rank}</td>
+                <td><strong>{row['friend']}</strong></td>
+                <td>{countries_html}</td>
+                <td><strong>{row['points_total']}</strong></td>
+            </tr>
+            """)
+
+        return f"""
+        <table class="scoreboard">
+            <thead>
+                <tr>
+                    <th>Rank</th>
+                    <th>Friend</th>
+                    <th>Countries</th>
+                    <th>Points</th>
+                </tr>
+            </thead>
+            <tbody>
+                {''.join(rows)}
+            </tbody>
+        </table>
+        """
+    def build_leader_banner(df):
+        top3 = df.head(3).reset_index(drop=True)
+        medals = ["🥇", "🥈", "🥉"]
+
+        rows = []
+        for i, row in top3.iterrows():
+            rows.append(f"""
+            <div class="leader">
+                <span class="medal">{medals[i]}</span>
+                <span class="name">{row['friend']}</span>
+                <span class="points">{row['points_total']} pts</span>
+            </div>
+            """)
+
+        return f"""
+        <div class="leaderboard">
+            {''.join(rows)}
+        </div>
+        """
+
+    table_html = build_pretty_table(scored_df)
+    leader_html = build_leader_banner(scored_df)
 
     plot = make_plot(scored_df)
     plot_html = plot.to_html(full_html=False, include_plotlyjs="cdn")
 
     last_updated = pd.Timestamp.utcnow().strftime("%Y-%m-%d %H:%M UTC")
-    OUTPUT_FILE.write_text(build_html(table_html, plot_html, last_updated))
+    OUTPUT_FILE.write_text(
+        build_html(leader_html + table_html, plot_html, last_updated)
+    )
+
 
     print(f"Updated {OUTPUT_FILE}")
