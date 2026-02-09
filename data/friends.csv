@@ -1,5 +1,5 @@
-friend,noc,country
-Alex,USA,United States
-Jamie,CAN,Canada
-Priya,IND,India
-Sam,AUS,Australia
+friend,noc_1,country_1,noc_2,country_2
+Alex,USA,United States,JPN,Japan
+Jamie,CAN,Canada,GBR,Great Britain
+Priya,IND,India,FRA,France
+Sam,AUS,Australia,GER,Germany
