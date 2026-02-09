@@ -459,7 +459,7 @@ def build_html(table_html, plot_html, last_updated):
 </head>
 <body>
   <div class=\"container\">
-    <h1>Fantasy Olympics Medal Draft</h1>
+    <h1>Milano-Cortina 2026 Fantasy Country Draft</h1>
     <div class=\"subtitle\">Updated: {last_updated}</div>
 
     <div class=\"section\">
