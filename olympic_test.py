@@ -41,6 +41,30 @@ COUNTRY_TO_NOC = {
     "Australia": "AUS",
 }
 
+NOC_TO_ISO = {
+    "NOR": "NO",
+    "USA": "US",
+    "ITA": "IT",
+    "JPN": "JP",
+    "AUT": "AT",
+    "GER": "DE",
+    "CZE": "CZ",
+    "FRA": "FR",
+    "SWE": "SE",
+    "SUI": "CH",
+    "CAN": "CA",
+    "NED": "NL",
+    "CHN": "CN",
+    "POL": "PL",
+    "KOR": "KR",
+    "FIN": "FI",
+    "SVK": "SK",
+    "BEL": "BE",
+    "HUN": "HU",
+    "NZL": "NZ",
+    "AUS": "AU",
+    "SLO": "SI",   # Slovenia
+}
 
 WIKI_MEDAL_URL = "https://en.wikipedia.org/wiki/2026_Winter_Olympics#Medal_table"
 
@@ -465,12 +489,20 @@ if __name__ == "__main__":
     friends_df = load_friends()
     scored_df = build_friend_scores(friends_df, medals_df)
 
+    # def noc_to_flag(noc):
+    #     if not isinstance(noc, str) or len(noc) != 3:
+    #         return ""
+    #     # Convert ISO country code to emoji flag
+    #     code = noc[:2].upper()
+    #     return "".join(chr(127397 + ord(c)) for c in code)
+
     def noc_to_flag(noc):
-        if not isinstance(noc, str) or len(noc) != 3:
+        if not isinstance(noc, str):
             return ""
-        # Convert ISO country code to emoji flag
-        code = noc[:2].upper()
-        return "".join(chr(127397 + ord(c)) for c in code)
+        iso = NOC_TO_ISO.get(noc)
+        if not iso:
+            return ""
+        return "".join(chr(127397 + ord(c)) for c in iso)
 
     def build_pretty_table(df):
         rows = []
