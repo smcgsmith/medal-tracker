@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import io   
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -156,7 +157,9 @@ def fetch_medals():
         response = requests.get(WIKI_MEDAL_URL, headers=HEADERS, timeout=20)
         response.raise_for_status()
 
-        tables = pd.read_html(response.text)
+        #tables = pd.read_html(response.text)
+        #tables = pd.read_html(response.text, flavor="bs4")
+        tables = pd.read_html(io.StringIO(response.text))
 
         medal_table = None
         for table in tables:
@@ -172,9 +175,12 @@ def fetch_medals():
         medal_table.columns = [str(c).lower() for c in medal_table.columns]
 
         # Remove totals row
+        # medal_table = medal_table[
+        #     ~medal_table.iloc[:, 0].astype(str).str.contains("total", case=False, na=False)
+        # ]
         medal_table = medal_table[
             ~medal_table.iloc[:, 0].astype(str).str.contains("total", case=False, na=False)
-        ]
+        ].copy()
 
         # Extract country name from NOC column
         country_col = None
@@ -186,15 +192,24 @@ def fetch_medals():
         if country_col is None:
             raise ValueError("NOC column not found")
 
-        medal_table["country"] = (
+        # medal_table["country"] = (
+        #     medal_table[country_col]
+        #     .astype(str)
+        #     .str.replace(r"\*+", "", regex=True)
+        #     .str.strip()
+        # )
+
+        # Map to NOC codes
+        # medal_table["noc"] = medal_table["country"].map(COUNTRY_TO_NOC)
+
+        medal_table.loc[:, "country"] = (
             medal_table[country_col]
             .astype(str)
             .str.replace(r"\*+", "", regex=True)
             .str.strip()
         )
 
-        # Map to NOC codes
-        medal_table["noc"] = medal_table["country"].map(COUNTRY_TO_NOC)
+        medal_table.loc[:, "noc"] = medal_table["country"].map(COUNTRY_TO_NOC)
 
         medals_df = medal_table[
             ["noc", "country", "gold", "silver", "bronze", "total"]
@@ -280,8 +295,12 @@ def build_friend_scores(friends_df, medals_df):
     # ---------------------------------
     # Norway penalty: halve only Norway points
     # ---------------------------------
+    merged["points_1"] = merged["points_1"].astype(float)
+    merged["points_2"] = merged["points_2"].astype(float)
+
     merged.loc[merged["noc_1"] == "NOR", "points_1"] *= 0.5
     merged.loc[merged["noc_2"] == "NOR", "points_2"] *= 0.5
+
 
     merged["points_total"] = merged["points_1"] + merged["points_2"]
     merged["total_medals"] = merged["total_1"] + merged["total_2"]
@@ -369,7 +388,7 @@ def build_html(table_html, plot_html, last_updated):
 <head>
   <meta charset=\"utf-8\">
   <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">
-  <title>Fantasy Olympics Medal Draft</title>
+  <title>Milano-Cortina 2026 Fantasy Country Draft</title>
   <style>
     body {{ font-family: 'Helvetica Neue', Arial, sans-serif; margin: 32px; color: #1a1a1a; }}
     h1 {{ margin-bottom: 4px; }}

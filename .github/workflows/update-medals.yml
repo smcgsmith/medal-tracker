@@ -2,7 +2,7 @@ name: Update medal data
 
 on:
   schedule:
-    - cron: "0 16,17 * * *"
+    - cron: "0 */6 * * *"
   workflow_dispatch:
 
 permissions:
