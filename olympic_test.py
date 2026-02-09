@@ -99,6 +99,27 @@ BAR_COLOR = "#2E86AB"  # all bars same color
 # ISO NOC → flag CDN
 FLAG_URL = "https://flagcdn.com/w40/{code}.png"
 
+# -----------------------------
+# Daily double config
+# -----------------------------
+DAILY_DOUBLE_EVENTS = [
+    {
+        "name": "Women's Ski Cross",
+        "url": "https://en.wikipedia.org/wiki/Freestyle_skiing_at_the_2026_Winter_Olympics_%E2%80%93_Women%27s_ski_cross",
+    },
+    {
+        "name": "Women's Luge Singles",
+        "url": "https://en.wikipedia.org/wiki/Luge_at_the_2026_Winter_Olympics_%E2%80%93_Women%27s_singles",
+    },
+    {
+        "name": "Men's 1500m Speed Skating",
+        "url": "https://en.wikipedia.org/wiki/Speed_skating_at_the_2026_Winter_Olympics_%E2%80%93_Men%27s_1500_metres",
+    },
+    {
+        "name": "Men's Alpine Slalom",
+        "url": "https://en.wikipedia.org/wiki/Alpine_skiing_at_the_2026_Winter_Olympics_%E2%80%93_Men%27s_slalom",
+    },
+]
 
 # -----------------------------
 # Fetch medals
@@ -253,6 +274,54 @@ def fetch_medals():
         print("Wikipedia fetch failed:", e)
         raise
 
+    # -----------------------------
+# Fetch daily double medals
+# -----------------------------
+def fetch_daily_doubles():
+    rows = []
+    results = []
+
+    for event in DAILY_DOUBLE_EVENTS:
+        try:
+            r = requests.get(event["url"], headers=HEADERS, timeout=20)
+            r.raise_for_status()
+            tables = pd.read_html(io.StringIO(r.text))
+
+            medal_table = tables[0]
+            medal_table.columns = [str(c).lower() for c in medal_table.columns]
+
+            event_result = {"event": event["name"], "results": []}
+
+            for _, row in medal_table.iterrows():
+                medal = str(row.get("medal", "")).lower()
+                noc = row.get("noc")
+
+                if medal in ["gold", "silver", "bronze"]:
+                    rows.append(
+                        {
+                            "noc": noc,
+                            "gold": int(medal == "gold"),
+                            "silver": int(medal == "silver"),
+                            "bronze": int(medal == "bronze"),
+                        }
+                    )
+                    event_result["results"].append((medal.title(), noc))
+
+            if not event_result["results"]:
+                event_result["scheduled"] = True
+
+            results.append(event_result)
+
+        except Exception:
+            results.append({"event": event["name"], "scheduled": True})
+
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return df, results
+
+    df = df.groupby("noc").sum().reset_index()
+    return df, results
+
 def load_medals_cache():
     if MEDALS_CACHE_FILE.exists():
         return pd.read_csv(MEDALS_CACHE_FILE)
@@ -281,7 +350,7 @@ def load_friends():
     return friends_df
 
 
-def build_friend_scores(friends_df, medals_df):
+def build_friend_scores(friends_df, medals_df, double_df):
     medals_df = medals_df.rename(columns={"country": "country_name"})
     medals_1 = medals_df.add_suffix("_1")
     medals_2 = medals_df.add_suffix("_2")
@@ -326,7 +395,34 @@ def build_friend_scores(friends_df, medals_df):
     merged.loc[merged["noc_2"] == "NOR", "points_2"] *= 0.5
 
 
-    merged["points_total"] = merged["points_1"] + merged["points_2"]
+    # merged["points_total"] = merged["points_1"] + merged["points_2"]
+    # -----------------------------
+    # Daily double scoring
+    # -----------------------------
+    if not double_df.empty:
+        dd = double_df.set_index("noc")
+
+        def get_dd_points(noc):
+            if noc in dd.index:
+                r = dd.loc[noc]
+                return (
+                    r["gold"] * SCORING_WEIGHTS["gold"]
+                    + r["silver"] * SCORING_WEIGHTS["silver"]
+                    + r["bronze"] * SCORING_WEIGHTS["bronze"]
+                )
+            return 0
+
+        merged["daily_double"] = (
+            merged["noc_1"].apply(get_dd_points)
+            + merged["noc_2"].apply(get_dd_points)
+        )
+    else:
+        merged["daily_double"] = 0
+
+    merged["points_total"] = (
+        merged["points_1"] + merged["points_2"] + merged["daily_double"]
+    )
+
     merged["total_medals"] = merged["total_1"] + merged["total_2"]
 
     return merged.sort_values(["points_total", "total_medals"], ascending=False)
@@ -471,6 +567,41 @@ def build_html(table_html, plot_html, last_updated):
 </body>
 </html>"""
 
+def build_daily_double_table(results):
+    rows = []
+
+    for event in results:
+        if event.get("scheduled"):
+            result_text = "Scheduled for later"
+        else:
+            result_text = ", ".join(
+                [f"{m} – {c}" for m, c in event["results"]]
+            )
+
+        rows.append(f"""
+        <tr>
+            <td>{event['event']}</td>
+            <td>{result_text}</td>
+        </tr>
+        """)
+
+    return f"""
+    <div class="section">
+      <h2>Daily Double Events</h2>
+      <table class="scoreboard">
+        <thead>
+            <tr>
+                <th>Event</th>
+                <th>Result</th>
+            </tr>
+        </thead>
+        <tbody>
+            {''.join(rows)}
+        </tbody>
+      </table>
+    </div>
+    """
+
 
 # -----------------------------
 # Main
@@ -486,8 +617,12 @@ if __name__ == "__main__":
         if medals_df is None:
             raise
         print("Warning: using cached medal data (network request failed).")
+    #friends_df = load_friends()
+    #scored_df = build_friend_scores(friends_df, medals_df)
     friends_df = load_friends()
-    scored_df = build_friend_scores(friends_df, medals_df)
+    double_df, double_results = fetch_daily_doubles()
+    scored_df = build_friend_scores(friends_df, medals_df, double_df)
+
 
     # def noc_to_flag(noc):
     #     if not isinstance(noc, str) or len(noc) != 3:
@@ -570,9 +705,15 @@ if __name__ == "__main__":
     plot_html = plot.to_html(full_html=False, include_plotlyjs="cdn")
 
     last_updated = pd.Timestamp.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+    # OUTPUT_FILE.write_text(
+    #     build_html(leader_html + table_html, plot_html, last_updated)
+    # )
+    daily_double_html = build_daily_double_table(double_results)
+
     OUTPUT_FILE.write_text(
-        build_html(leader_html + table_html, plot_html, last_updated)
+        build_html(leader_html + table_html + daily_double_html, plot_html, last_updated)
     )
+
 
 
     print(f"Updated {OUTPUT_FILE}")
