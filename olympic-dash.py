@@ -526,19 +526,18 @@ def build_html(table_html, plot_html, last_updated):
       font-family: 'Helvetica Neue', Arial, sans-serif;
       margin: 0;
       padding: 32px;
-      color: #1a1a1a;
-      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+      color: #333;
+      background: #f8f9fa;
       min-height: 100vh;
     }}
     h1 {{
       margin-bottom: 4px;
-      color: #fff;
+      color: #1a1a1a;
       text-align: center;
       font-size: 2.5em;
-      text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
     }}
     .subtitle {{
-      color: #aaa;
+      color: #666;
       margin-bottom: 24px;
       text-align: center;
     }}
@@ -552,7 +551,7 @@ def build_html(table_html, plot_html, last_updated):
       left: 0;
       width: 100%;
       height: 100%;
-      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+      background: #f8f9fa;
       z-index: 1000;
       display: flex;
       flex-direction: column;
@@ -566,15 +565,16 @@ def build_html(table_html, plot_html, last_updated):
     }}
 
     .reveal-card {{
-      background: linear-gradient(145deg, #2a2a4a, #1a1a3a);
+      background: #fff;
       border-radius: 20px;
       padding: 40px;
       text-align: center;
       opacity: 0;
       transform: translateY(50px) scale(0.9);
       transition: all 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-      box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+      box-shadow: 0 10px 40px rgba(0,0,0,0.1);
       min-width: 400px;
+      border: 1px solid #e0e0e0;
     }}
     .reveal-card.visible {{
       opacity: 1;
@@ -584,7 +584,6 @@ def build_html(table_html, plot_html, last_updated):
       font-size: 4em;
       font-weight: bold;
       color: #ffd700;
-      text-shadow: 0 0 30px rgba(255, 215, 0, 0.5);
       margin-bottom: 10px;
     }}
     .reveal-card .profile-pic {{
@@ -595,21 +594,21 @@ def build_html(table_html, plot_html, last_updated):
       border: 4px solid #ffd700;
       margin: 20px auto;
       display: block;
-      box-shadow: 0 10px 40px rgba(255, 215, 0, 0.3);
+      box-shadow: 0 5px 20px rgba(0,0,0,0.1);
     }}
     .reveal-card .name {{
       font-size: 2.5em;
-      color: #fff;
+      color: #1a1a1a;
       font-weight: bold;
       margin: 10px 0;
     }}
     .reveal-card .points {{
       font-size: 1.8em;
-      color: #4ecdc4;
+      color: #2563eb;
       font-weight: bold;
     }}
     .reveal-card .countries {{
-      color: #aaa;
+      color: #666;
       font-size: 1.2em;
       margin-top: 15px;
     }}
@@ -620,54 +619,55 @@ def build_html(table_html, plot_html, last_updated):
 
     /* Podium animation for top 3 */
     .reveal-card.gold {{
-      background: linear-gradient(145deg, #4a3f00, #2a2500);
+      background: #fffbeb;
       border: 2px solid #ffd700;
     }}
     .reveal-card.silver {{
-      background: linear-gradient(145deg, #3a3a4a, #2a2a3a);
+      background: #f8f9fa;
       border: 2px solid #c0c0c0;
     }}
     .reveal-card.bronze {{
-      background: linear-gradient(145deg, #4a3020, #2a1a10);
+      background: #fef3e7;
       border: 2px solid #cd7f32;
     }}
 
     /* Scoreboard */
     .scoreboard-container {{
-      background: rgba(255,255,255,0.05);
+      background: #fff;
       border-radius: 20px;
       padding: 30px;
-      backdrop-filter: blur(10px);
+      box-shadow: 0 4px 20px rgba(0,0,0,0.08);
     }}
     .player-row {{
       display: flex;
       align-items: center;
       padding: 15px 20px;
       margin: 10px 0;
-      background: linear-gradient(145deg, rgba(255,255,255,0.1), rgba(255,255,255,0.05));
+      background: #f8f9fa;
       border-radius: 15px;
       cursor: pointer;
       transition: all 0.3s ease;
       opacity: 0;
       transform: translateX(-50px);
+      border: 1px solid #e9ecef;
     }}
     .player-row.visible {{
       opacity: 1;
       transform: translateX(0);
     }}
     .player-row:hover {{
-      background: linear-gradient(145deg, rgba(255,255,255,0.15), rgba(255,255,255,0.1));
+      background: #fff;
       transform: scale(1.02);
-      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+      box-shadow: 0 5px 20px rgba(0,0,0,0.1);
     }}
-    .player-row.rank-1 {{ border-left: 4px solid #ffd700; }}
-    .player-row.rank-2 {{ border-left: 4px solid #c0c0c0; }}
-    .player-row.rank-3 {{ border-left: 4px solid #cd7f32; }}
+    .player-row.rank-1 {{ border-left: 4px solid #ffd700; background: #fffbeb; }}
+    .player-row.rank-2 {{ border-left: 4px solid #c0c0c0; background: #f8f9fa; }}
+    .player-row.rank-3 {{ border-left: 4px solid #cd7f32; background: #fef3e7; }}
 
     .rank-num {{
       font-size: 1.8em;
       font-weight: bold;
-      color: #ffd700;
+      color: #333;
       width: 50px;
       text-align: center;
     }}
@@ -677,7 +677,7 @@ def build_html(table_html, plot_html, last_updated):
       border-radius: 50%;
       object-fit: cover;
       margin: 0 20px;
-      border: 3px solid rgba(255,255,255,0.2);
+      border: 3px solid #e9ecef;
     }}
     .player-info {{
       flex: 1;
@@ -685,7 +685,7 @@ def build_html(table_html, plot_html, last_updated):
     .player-name {{
       font-size: 1.4em;
       font-weight: bold;
-      color: #fff;
+      color: #1a1a1a;
     }}
     .stacked-medals {{
       font-size: 0.7em;
@@ -693,14 +693,14 @@ def build_html(table_html, plot_html, last_updated):
       letter-spacing: 2px;
     }}
     .player-countries {{
-      color: #aaa;
+      color: #666;
       font-size: 0.95em;
       margin-top: 5px;
     }}
     .player-points {{
       font-size: 1.8em;
       font-weight: bold;
-      color: #4ecdc4;
+      color: #2563eb;
       text-align: right;
       min-width: 80px;
     }}
@@ -708,11 +708,13 @@ def build_html(table_html, plot_html, last_updated):
     /* Events dropdown */
     .events-panel {{
       display: none;
-      background: rgba(0,0,0,0.3);
+      background: #fff;
       border-radius: 10px;
       padding: 20px;
       margin: 10px 0 10px 70px;
       animation: slideDown 0.3s ease;
+      border: 1px solid #e9ecef;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.05);
     }}
     .events-panel.open {{
       display: block;
@@ -722,20 +724,21 @@ def build_html(table_html, plot_html, last_updated):
       to {{ opacity: 1; transform: translateY(0); }}
     }}
     .events-panel h4 {{
-      color: #ffd700;
+      color: #333;
       margin: 0 0 15px 0;
     }}
     .event-link {{
       display: block;
-      color: #4ecdc4;
+      color: #2563eb;
       text-decoration: none;
       padding: 8px 0;
-      border-bottom: 1px solid rgba(255,255,255,0.1);
-      transition: color 0.2s;
+      border-bottom: 1px solid #e9ecef;
+      transition: all 0.2s;
     }}
     .event-link:hover {{
-      color: #fff;
+      color: #1d4ed8;
       padding-left: 5px;
+      background: #f8f9fa;
     }}
     .event-link .medal-icon {{
       margin-right: 10px;
@@ -744,17 +747,17 @@ def build_html(table_html, plot_html, last_updated):
       margin-bottom: 15px;
     }}
     .country-events h5 {{
-      color: #fff;
+      color: #333;
       margin: 0 0 10px 0;
       font-size: 1em;
-      border-bottom: 1px solid rgba(255,255,255,0.2);
+      border-bottom: 1px solid #e9ecef;
       padding-bottom: 5px;
     }}
     .event-item {{
       display: inline-block;
     }}
     .athlete-name {{
-      color: #aaa;
+      color: #888;
       font-size: 0.85em;
       font-style: italic;
     }}
@@ -764,44 +767,47 @@ def build_html(table_html, plot_html, last_updated):
       position: fixed;
       bottom: 30px;
       right: 30px;
-      background: rgba(255,255,255,0.1);
-      color: #fff;
-      border: 1px solid rgba(255,255,255,0.3);
+      background: #fff;
+      color: #333;
+      border: 1px solid #ddd;
       padding: 12px 24px;
       border-radius: 30px;
       cursor: pointer;
       font-size: 1em;
       z-index: 1001;
       transition: all 0.3s;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
     }}
     #skip-btn:hover {{
-      background: rgba(255,255,255,0.2);
+      background: #f8f9fa;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.15);
     }}
 
     /* Daily Double */
     .daily-double {{
-      background: rgba(255,255,255,0.05);
+      background: #fff;
       border-radius: 15px;
       padding: 20px;
       margin-top: 30px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.08);
     }}
     .daily-double h2 {{
-      color: #ffd700;
+      color: #333;
       margin-bottom: 20px;
     }}
     .daily-double table {{
       width: 100%;
-      color: #fff;
+      color: #333;
     }}
     .daily-double th {{
       text-align: left;
       padding: 10px;
-      color: #aaa;
-      border-bottom: 1px solid rgba(255,255,255,0.1);
+      color: #666;
+      border-bottom: 1px solid #e9ecef;
     }}
     .daily-double td {{
       padding: 10px;
-      border-bottom: 1px solid rgba(255,255,255,0.05);
+      border-bottom: 1px solid #f0f0f0;
     }}
 
     /* Mobile Responsive */

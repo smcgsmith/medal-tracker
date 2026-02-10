@@ -1,6 +1,6 @@
 """
 Medal Events Fetcher
-Fetches detailed medal events from Wikipedia with athlete names and full event descriptions.
+Fetches ALL medal events from the comprehensive Wikipedia medal winners page.
 """
 
 import re
@@ -10,159 +10,169 @@ import pandas as pd
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
-    "Accept": "application/json",
+    "Accept": "text/html",
 }
 
-# Country name to NOC mapping
+# Country name to NOC mapping (comprehensive list)
 COUNTRY_TO_NOC = {
     "norway": "NOR", "united states": "USA", "italy": "ITA", "japan": "JPN",
-    "austria": "AUT", "germany": "GER", "czech republic": "CZE", "france": "FRA",
-    "sweden": "SWE", "switzerland": "SUI", "canada": "CAN", "netherlands": "NED",
-    "china": "CHN", "poland": "POL", "south korea": "KOR", "finland": "FIN",
-    "new zealand": "NZL", "slovenia": "SLO", "australia": "AUS", "great britain": "GBR",
+    "austria": "AUT", "germany": "GER", "czech republic": "CZE", "czechia": "CZE",
+    "france": "FRA", "sweden": "SWE", "switzerland": "SUI", "canada": "CAN",
+    "netherlands": "NED", "the netherlands": "NED", "holland": "NED",
+    "china": "CHN", "poland": "POL", "south korea": "KOR", "korea": "KOR",
+    "finland": "FIN", "new zealand": "NZL", "slovenia": "SLO", "australia": "AUS",
+    "great britain": "GBR", "united kingdom": "GBR", "britain": "GBR",
     "belgium": "BEL", "hungary": "HUN", "slovakia": "SVK", "bulgaria": "BUL",
+    "latvia": "LAT", "russia": "RUS", "roc": "RUS", "spain": "ESP",
+    "ukraine": "UKR", "croatia": "CRO", "estonia": "EST", "lithuania": "LTU",
+    "romania": "ROU", "kazakhstan": "KAZ", "brazil": "BRA", "denmark": "DEN",
+    "monaco": "MON", "andorra": "AND", "liechtenstein": "LIE",
 }
 
-# Sport URL mappings
-SPORT_URLS = {
-    "Alpine skiing": "https://en.wikipedia.org/wiki/Alpine_skiing_at_the_2026_Winter_Olympics",
-    "Biathlon": "https://en.wikipedia.org/wiki/Biathlon_at_the_2026_Winter_Olympics",
-    "Bobsleigh": "https://en.wikipedia.org/wiki/Bobsleigh_at_the_2026_Winter_Olympics",
-    "Cross-country skiing": "https://en.wikipedia.org/wiki/Cross-country_skiing_at_the_2026_Winter_Olympics",
-    "Curling": "https://en.wikipedia.org/wiki/Curling_at_the_2026_Winter_Olympics",
-    "Figure skating": "https://en.wikipedia.org/wiki/Figure_skating_at_the_2026_Winter_Olympics",
-    "Freestyle skiing": "https://en.wikipedia.org/wiki/Freestyle_skiing_at_the_2026_Winter_Olympics",
-    "Ice hockey": "https://en.wikipedia.org/wiki/Ice_hockey_at_the_2026_Winter_Olympics",
-    "Luge": "https://en.wikipedia.org/wiki/Luge_at_the_2026_Winter_Olympics",
-    "Nordic combined": "https://en.wikipedia.org/wiki/Nordic_combined_at_the_2026_Winter_Olympics",
-    "Short track speed skating": "https://en.wikipedia.org/wiki/Short_track_speed_skating_at_the_2026_Winter_Olympics",
-    "Skeleton": "https://en.wikipedia.org/wiki/Skeleton_at_the_2026_Winter_Olympics",
-    "Ski jumping": "https://en.wikipedia.org/wiki/Ski_jumping_at_the_2026_Winter_Olympics",
-    "Snowboarding": "https://en.wikipedia.org/wiki/Snowboarding_at_the_2026_Winter_Olympics",
-    "Speed skating": "https://en.wikipedia.org/wiki/Speed_skating_at_the_2026_Winter_Olympics",
+# Map table indices to sport names (based on actual page structure)
+TABLE_TO_SPORT = {
+    2: ("Alpine skiing", "Men's"),
+    3: ("Alpine skiing", "Women's"),
+    4: ("Biathlon", "Men's"),
+    5: ("Biathlon", "Women's"),
+    6: ("Biathlon", "Mixed"),
+    7: ("Bobsleigh", ""),
+    8: ("Cross-country skiing", "Men's"),
+    9: ("Cross-country skiing", "Women's"),
+    10: ("Curling", ""),
+    11: ("Figure skating", ""),
+    12: ("Freestyle skiing", "Men's"),
+    13: ("Freestyle skiing", "Women's"),
+    14: ("Freestyle skiing", "Mixed"),
+    15: ("Ice hockey", ""),
+    16: ("Luge", ""),
+    17: ("Nordic combined", ""),
+    18: ("Short track speed skating", "Men's"),
+    19: ("Short track speed skating", "Women's"),
+    20: ("Short track speed skating", "Mixed"),
+    21: ("Skeleton", ""),
+    22: ("Ski jumping", "Men's"),
+    23: ("Ski jumping", "Women's"),
+    24: ("Ski jumping", "Mixed"),
+    25: ("Snowboarding", "Men's"),
+    26: ("Snowboarding", "Men's"),  # Big air
+    27: ("Snowboarding", "Women's"),  # Big air
+    28: ("Snowboarding", "Mixed"),  # Team snowboard cross
+    29: ("Speed skating", "Men's"),
+    30: ("Speed skating", "Women's"),
 }
+
+# Wikipedia page with ALL medal winners
+MEDAL_WINNERS_URL = "https://en.wikipedia.org/wiki/List_of_2026_Winter_Olympics_medal_winners"
 
 
 def extract_athlete_and_country(cell_text):
-    """Extract athlete name and country from a cell like 'Franjo von Allmen  Switzerland'"""
+    """Extract athlete name and country from cell like 'Franjo von Allmen  Switzerland'"""
     if not cell_text or cell_text == 'nan' or len(cell_text) < 3:
         return None, None
 
+    cell_text = str(cell_text).strip()
     cell_lower = cell_text.lower()
 
+    # Check for full country name at the end of the text
     for country_name, noc in COUNTRY_TO_NOC.items():
         if country_name in cell_lower:
-            # Find where country name starts and extract athlete name
-            idx = cell_lower.find(country_name)
+            idx = cell_lower.rfind(country_name)  # Use rfind for last occurrence
             athlete = cell_text[:idx].strip()
             # Clean up athlete name
             athlete = re.sub(r'\s+', ' ', athlete).strip()
-            return athlete, noc
+            if athlete and len(athlete) > 1:
+                return athlete, noc
 
     return None, None
 
 
-def fetch_sport_medals(sport_name, sport_url):
-    """Fetch medals from a specific sport's Wikipedia page."""
-    events = []
+def fetch_medal_events():
+    """Fetch ALL medal events from the comprehensive Wikipedia page."""
+    events_by_noc = {}
+
+    print("Fetching medal events from comprehensive Wikipedia page...")
 
     try:
-        response = requests.get(sport_url, headers=HEADERS, timeout=15)
+        response = requests.get(MEDAL_WINNERS_URL, headers=HEADERS, timeout=20)
         response.raise_for_status()
         tables = pd.read_html(io.StringIO(response.text))
 
-        current_gender = ""
+        print(f"  Found {len(tables)} tables on page")
 
-        for table in tables:
+        for table_idx, table in enumerate(tables):
+            # Check if this table has the right structure
             cols = [str(c).lower() for c in table.columns]
-
-            # Look for medal tables with Event/Gold/Silver/Bronze columns
-            if 'event' not in cols:
-                continue
-            if 'gold' not in cols and 'silver' not in cols:
+            if 'event' not in cols or 'gold' not in cols:
                 continue
 
+            # Get sport info from our mapping
+            sport_info = TABLE_TO_SPORT.get(table_idx)
+            if not sport_info:
+                # Try to infer from table content or skip
+                continue
+
+            sport_name, gender_prefix = sport_info
+
+            # Process each row
             for _, row in table.iterrows():
-                event_raw = str(row.get('Event', row.get('event', '')))
+                event_raw = str(row.get('Event', ''))
                 if not event_raw or event_raw == 'nan':
                     continue
 
-                # Skip header rows
-                if 'event' in event_raw.lower() and len(event_raw) < 10:
+                # Clean event name
+                event_name = event_raw.replace(' details', '').replace('details', '').strip()
+                if not event_name or event_name.lower() == 'event':
                     continue
 
-                # Clean event name
-                event_name = event_raw.replace(' details', '').replace(' Details', '').strip()
-
-                # Detect gender from event name
-                event_lower = event_name.lower()
-                if "women" in event_lower or "ladies" in event_lower:
-                    gender = "Women's"
-                elif "men" in event_lower and "women" not in event_lower:
-                    gender = "Men's"
-                elif "mixed" in event_lower or "team" in event_lower:
-                    gender = ""
-                else:
-                    gender = current_gender  # Use previous gender context
-
-                current_gender = gender if gender else current_gender
-
-                # Build full event name
-                if gender and gender.lower().replace("'s", "") not in event_lower:
-                    full_event = f"{gender} {sport_name}: {event_name}"
+                # Build full event name with sport
+                if gender_prefix:
+                    full_event = f"{gender_prefix} {sport_name}: {event_name}"
                 else:
                     full_event = f"{sport_name}: {event_name}"
 
-                # Process each medal
-                for medal_col in ['Gold', 'Silver', 'Bronze', 'gold', 'silver', 'bronze']:
-                    cell = str(row.get(medal_col, ''))
+                # Process each medal column
+                for medal_type in ['Gold', 'Silver', 'Bronze']:
+                    cell = str(row.get(medal_type, ''))
+                    if not cell or cell == 'nan' or cell == 'NaN':
+                        continue
+
                     athlete, noc = extract_athlete_and_country(cell)
 
                     if noc and athlete:
-                        events.append({
-                            "noc": noc,
+                        if noc not in events_by_noc:
+                            events_by_noc[noc] = []
+
+                        events_by_noc[noc].append({
                             "event": full_event,
                             "athlete": athlete,
-                            "medal": medal_col.lower(),
-                            "url": sport_url
+                            "medal": medal_type.lower(),
+                            "url": MEDAL_WINNERS_URL
                         })
 
+        print(f"Fetched medal events for {len(events_by_noc)} countries")
+
     except Exception as e:
-        print(f"  Failed to fetch {sport_name}: {e}")
+        print(f"  Error fetching medal events: {e}")
 
-    return events
-
-
-def fetch_medal_events():
-    """Fetch individual medal events from each sport's Wikipedia page."""
-    events_by_noc = {}
-
-    print("Fetching medal events from sport pages...")
-
-    for sport_name, sport_url in SPORT_URLS.items():
-        print(f"  Fetching {sport_name}...")
-        sport_events = fetch_sport_medals(sport_name, sport_url)
-
-        for event in sport_events:
-            noc = event["noc"]
-            if noc not in events_by_noc:
-                events_by_noc[noc] = []
-
-            events_by_noc[noc].append({
-                "event": event["event"],
-                "athlete": event["athlete"],
-                "medal": event["medal"],
-                "url": event["url"]
-            })
-
-    print(f"Fetched medal events for {len(events_by_noc)} countries")
     return events_by_noc
 
 
 if __name__ == "__main__":
     # Test the fetcher
     events = fetch_medal_events()
-    for noc, evts in list(events.items())[:3]:
-        print(f"\n{noc}:")
-        for e in evts[:3]:
-            print(f"  {e['medal'].upper()}: {e['event']} - {e['athlete']}")
+
+    # Show summary
+    total = sum(len(evts) for evts in events.values())
+    print(f"\nTotal events found: {total}")
+
+    # Show sample for a few countries
+    for noc in ['USA', 'ITA', 'NOR', 'FRA', 'GER']:
+        evts = events.get(noc, [])
+        if evts:
+            golds = sum(1 for e in evts if e['medal'] == 'gold')
+            silvers = sum(1 for e in evts if e['medal'] == 'silver')
+            bronzes = sum(1 for e in evts if e['medal'] == 'bronze')
+            print(f"\n{noc}: {golds}G {silvers}S {bronzes}B = {len(evts)} events")
+            for e in evts[:3]:
+                print(f"  {e['medal'].upper()}: {e['event']} - {e['athlete']}")
