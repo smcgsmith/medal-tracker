@@ -33,12 +33,17 @@ COUNTRY_TO_NOC = {
     "China": "CHN",
     "Poland": "POL",
     "Korea": "KOR",
+    "South Korea": "KOR",
     "Finland": "FIN",
     "Slovakia": "SVK",
     "Belgium": "BEL",
     "Hungary": "HUN",
     "New Zealand": "NZL",
     "Australia": "AUS",
+    "Slovenia": "SLO",
+    "Bulgaria": "BUL",
+    "Great Britain": "GBR",
+    "Russia": "RUS",
 }
 
 NOC_TO_ISO = {
@@ -64,9 +69,12 @@ NOC_TO_ISO = {
     "NZL": "NZ",
     "AUS": "AU",
     "SLO": "SI",   # Slovenia
+    "BUL": "BG",   # Bulgaria
+    "GBR": "GB",   # Great Britain
+    "RUS": "RU",   # Russia
 }
 
-WIKI_MEDAL_URL = "https://en.wikipedia.org/wiki/2026_Winter_Olympics#Medal_table"
+WIKI_MEDAL_URL = "https://en.wikipedia.org/wiki/2026_Winter_Olympics_medal_table"
 
 ENV_API_URLS = os.environ.get("MEDALS_API_URLS")
 API_URLS = (
@@ -510,60 +518,485 @@ def build_html(table_html, plot_html, last_updated):
   <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">
   <title>Milano-Cortina 2026 Fantasy Country Draft</title>
   <style>
-    body {{ font-family: 'Helvetica Neue', Arial, sans-serif; margin: 32px; color: #1a1a1a; }}
-    h1 {{ margin-bottom: 4px; }}
-    .subtitle {{ color: #555; margin-bottom: 24px; }}
-    table {{ border-collapse: collapse; width: 100%; margin-top: 16px; }}
-    th, td {{ border-bottom: 1px solid #e0e0e0; padding: 10px 12px; text-align: left; }}
-    th {{ background: #f5f5f5; }}
+    * {{ box-sizing: border-box; }}
+    body {{
+      font-family: 'Helvetica Neue', Arial, sans-serif;
+      margin: 0;
+      padding: 32px;
+      color: #1a1a1a;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+      min-height: 100vh;
+    }}
+    h1 {{
+      margin-bottom: 4px;
+      color: #fff;
+      text-align: center;
+      font-size: 2.5em;
+      text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+    }}
+    .subtitle {{
+      color: #aaa;
+      margin-bottom: 24px;
+      text-align: center;
+    }}
     .container {{ max-width: 1000px; margin: 0 auto; }}
     .section {{ margin-top: 32px; }}
-    .leaderboard {{
-        display: flex;
-        justify-content: space-around;
-        background: #f7f7f7;
+
+    /* Animation Intro */
+    #intro-overlay {{
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      transition: opacity 0.5s ease;
+    }}
+    #intro-overlay.hidden {{
+      opacity: 0;
+      pointer-events: none;
+    }}
+
+    .reveal-card {{
+      background: linear-gradient(145deg, #2a2a4a, #1a1a3a);
+      border-radius: 20px;
+      padding: 40px;
+      text-align: center;
+      opacity: 0;
+      transform: translateY(50px) scale(0.9);
+      transition: all 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+      min-width: 400px;
+    }}
+    .reveal-card.visible {{
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }}
+    .reveal-card .rank-badge {{
+      font-size: 4em;
+      font-weight: bold;
+      color: #ffd700;
+      text-shadow: 0 0 30px rgba(255, 215, 0, 0.5);
+      margin-bottom: 10px;
+    }}
+    .reveal-card .profile-pic {{
+      width: 150px;
+      height: 150px;
+      border-radius: 50%;
+      object-fit: cover;
+      border: 4px solid #ffd700;
+      margin: 20px auto;
+      display: block;
+      box-shadow: 0 10px 40px rgba(255, 215, 0, 0.3);
+    }}
+    .reveal-card .name {{
+      font-size: 2.5em;
+      color: #fff;
+      font-weight: bold;
+      margin: 10px 0;
+    }}
+    .reveal-card .points {{
+      font-size: 1.8em;
+      color: #4ecdc4;
+      font-weight: bold;
+    }}
+    .reveal-card .countries {{
+      color: #aaa;
+      font-size: 1.2em;
+      margin-top: 15px;
+    }}
+    .reveal-card .medal-count {{
+      font-size: 1.5em;
+      margin-top: 10px;
+    }}
+
+    /* Podium animation for top 3 */
+    .reveal-card.gold {{
+      background: linear-gradient(145deg, #4a3f00, #2a2500);
+      border: 2px solid #ffd700;
+    }}
+    .reveal-card.silver {{
+      background: linear-gradient(145deg, #3a3a4a, #2a2a3a);
+      border: 2px solid #c0c0c0;
+    }}
+    .reveal-card.bronze {{
+      background: linear-gradient(145deg, #4a3020, #2a1a10);
+      border: 2px solid #cd7f32;
+    }}
+
+    /* Scoreboard */
+    .scoreboard-container {{
+      background: rgba(255,255,255,0.05);
+      border-radius: 20px;
+      padding: 30px;
+      backdrop-filter: blur(10px);
+    }}
+    .player-row {{
+      display: flex;
+      align-items: center;
+      padding: 15px 20px;
+      margin: 10px 0;
+      background: linear-gradient(145deg, rgba(255,255,255,0.1), rgba(255,255,255,0.05));
+      border-radius: 15px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      opacity: 0;
+      transform: translateX(-50px);
+    }}
+    .player-row.visible {{
+      opacity: 1;
+      transform: translateX(0);
+    }}
+    .player-row:hover {{
+      background: linear-gradient(145deg, rgba(255,255,255,0.15), rgba(255,255,255,0.1));
+      transform: scale(1.02);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+    }}
+    .player-row.rank-1 {{ border-left: 4px solid #ffd700; }}
+    .player-row.rank-2 {{ border-left: 4px solid #c0c0c0; }}
+    .player-row.rank-3 {{ border-left: 4px solid #cd7f32; }}
+
+    .rank-num {{
+      font-size: 1.8em;
+      font-weight: bold;
+      color: #ffd700;
+      width: 50px;
+      text-align: center;
+    }}
+    .player-pic {{
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+      object-fit: cover;
+      margin: 0 20px;
+      border: 3px solid rgba(255,255,255,0.2);
+    }}
+    .player-info {{
+      flex: 1;
+    }}
+    .player-name {{
+      font-size: 1.4em;
+      font-weight: bold;
+      color: #fff;
+    }}
+    .player-countries {{
+      color: #aaa;
+      font-size: 0.95em;
+      margin-top: 5px;
+    }}
+    .player-points {{
+      font-size: 1.8em;
+      font-weight: bold;
+      color: #4ecdc4;
+      text-align: right;
+      min-width: 80px;
+    }}
+
+    /* Events dropdown */
+    .events-panel {{
+      display: none;
+      background: rgba(0,0,0,0.3);
+      border-radius: 10px;
+      padding: 20px;
+      margin: 10px 0 10px 70px;
+      animation: slideDown 0.3s ease;
+    }}
+    .events-panel.open {{
+      display: block;
+    }}
+    @keyframes slideDown {{
+      from {{ opacity: 0; transform: translateY(-10px); }}
+      to {{ opacity: 1; transform: translateY(0); }}
+    }}
+    .events-panel h4 {{
+      color: #ffd700;
+      margin: 0 0 15px 0;
+    }}
+    .event-link {{
+      display: block;
+      color: #4ecdc4;
+      text-decoration: none;
+      padding: 8px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+      transition: color 0.2s;
+    }}
+    .event-link:hover {{
+      color: #fff;
+      padding-left: 5px;
+    }}
+    .event-link .medal-icon {{
+      margin-right: 10px;
+    }}
+    .country-events {{
+      margin-bottom: 15px;
+    }}
+    .country-events h5 {{
+      color: #fff;
+      margin: 0 0 10px 0;
+      font-size: 1em;
+      border-bottom: 1px solid rgba(255,255,255,0.2);
+      padding-bottom: 5px;
+    }}
+    .event-item {{
+      display: inline-block;
+    }}
+
+    /* Skip button */
+    #skip-btn {{
+      position: fixed;
+      bottom: 30px;
+      right: 30px;
+      background: rgba(255,255,255,0.1);
+      color: #fff;
+      border: 1px solid rgba(255,255,255,0.3);
+      padding: 12px 24px;
+      border-radius: 30px;
+      cursor: pointer;
+      font-size: 1em;
+      z-index: 1001;
+      transition: all 0.3s;
+    }}
+    #skip-btn:hover {{
+      background: rgba(255,255,255,0.2);
+    }}
+
+    /* Daily Double */
+    .daily-double {{
+      background: rgba(255,255,255,0.05);
+      border-radius: 15px;
+      padding: 20px;
+      margin-top: 30px;
+    }}
+    .daily-double h2 {{
+      color: #ffd700;
+      margin-bottom: 20px;
+    }}
+    .daily-double table {{
+      width: 100%;
+      color: #fff;
+    }}
+    .daily-double th {{
+      text-align: left;
+      padding: 10px;
+      color: #aaa;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+    }}
+    .daily-double td {{
+      padding: 10px;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+    }}
+
+    /* Mobile Responsive */
+    @media (max-width: 768px) {{
+      body {{
         padding: 16px;
-        border-radius: 10px;
-        margin-bottom: 24px;
-        font-size: 1.2em;
-    }}
-
-    .leader {{
-        text-align: center;
-    }}
-
-    .medal {{
-        font-size: 1.5em;
-        margin-right: 6px;
-    }}
-
-    .scoreboard {{
-        width: 100%;
-        border-collapse: collapse;
-        margin-top: 20px;
-    }}
-
-    .scoreboard th, .scoreboard td {{
+      }}
+      h1 {{
+        font-size: 1.6em;
+      }}
+      .reveal-card {{
+        min-width: 90vw;
+        padding: 25px;
+      }}
+      .reveal-card .rank-badge {{
+        font-size: 2.5em;
+      }}
+      .reveal-card .profile-pic {{
+        width: 100px;
+        height: 100px;
+      }}
+      .reveal-card .name {{
+        font-size: 1.8em;
+      }}
+      .reveal-card .points {{
+        font-size: 1.4em;
+      }}
+      .scoreboard-container {{
+        padding: 15px;
+      }}
+      .player-row {{
+        flex-wrap: wrap;
         padding: 12px;
-        border-bottom: 1px solid #e0e0e0;
+      }}
+      .rank-num {{
+        font-size: 1.3em;
+        width: 35px;
+      }}
+      .player-pic {{
+        width: 45px;
+        height: 45px;
+        margin: 0 10px;
+      }}
+      .player-info {{
+        flex: 1;
+        min-width: 0;
+      }}
+      .player-name {{
+        font-size: 1.1em;
+      }}
+      .player-countries {{
+        font-size: 0.8em;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }}
+      .player-points {{
+        font-size: 1.3em;
+        min-width: 60px;
+      }}
+      .events-panel {{
+        margin: 10px 0;
+        padding: 15px;
+      }}
+      .event-item {{
+        font-size: 0.9em;
+      }}
+      #skip-btn {{
+        bottom: 15px;
+        right: 15px;
+        padding: 10px 18px;
+        font-size: 0.9em;
+      }}
+      .daily-double {{
+        padding: 15px;
+      }}
+      .daily-double th, .daily-double td {{
+        padding: 8px 5px;
+        font-size: 0.9em;
+      }}
     }}
 
-    .country-block div {{
-        margin: 2px 0;
+    @media (max-width: 480px) {{
+      h1 {{
+        font-size: 1.3em;
+      }}
+      .reveal-card {{
+        padding: 20px;
+      }}
+      .reveal-card .rank-badge {{
+        font-size: 2em;
+      }}
+      .reveal-card .profile-pic {{
+        width: 80px;
+        height: 80px;
+      }}
+      .reveal-card .name {{
+        font-size: 1.4em;
+      }}
+      .player-row {{
+        padding: 10px;
+      }}
+      .rank-num {{
+        font-size: 1.1em;
+        width: 30px;
+      }}
+      .player-pic {{
+        width: 40px;
+        height: 40px;
+        margin: 0 8px;
+      }}
+      .player-name {{
+        font-size: 1em;
+      }}
+      .player-points {{
+        font-size: 1.1em;
+        min-width: 50px;
+      }}
     }}
   </style>
 </head>
 <body>
+  <div id=\"intro-overlay\">
+    <div class=\"reveal-card\" id=\"reveal-card\">
+      <div class=\"rank-badge\" id=\"reveal-rank\"></div>
+      <img class=\"profile-pic\" id=\"reveal-pic\" src=\"\" alt=\"\">
+      <div class=\"name\" id=\"reveal-name\"></div>
+      <div class=\"points\" id=\"reveal-points\"></div>
+      <div class=\"countries\" id=\"reveal-countries\"></div>
+      <div class=\"medal-count\" id=\"reveal-medals\"></div>
+    </div>
+  </div>
+
+  <button id=\"skip-btn\" onclick=\"skipAnimation()\">Skip Animation</button>
+
   <div class=\"container\">
     <h1>Milano-Cortina 2026 Fantasy Country Draft</h1>
     <div class=\"subtitle\">Updated: {last_updated}</div>
 
     <div class=\"section\">
-      <h2>Points Table</h2>
-      {table_html}
+      <div class=\"scoreboard-container\">
+        {table_html}
+      </div>
     </div>
 
   </div>
+
+  <script>
+    const players = window.playerData || [];
+    let currentIndex = players.length - 1;
+    let animationSkipped = false;
+
+    function showRevealCard(player, index) {{
+      const card = document.getElementById('reveal-card');
+      const rankClasses = ['', 'gold', 'silver', 'bronze'];
+
+      card.className = 'reveal-card ' + (rankClasses[player.rank] || '');
+
+      document.getElementById('reveal-rank').textContent = '#' + player.rank;
+      document.getElementById('reveal-pic').src = player.pic;
+      document.getElementById('reveal-name').textContent = player.name;
+      document.getElementById('reveal-points').textContent = player.points + ' pts';
+      document.getElementById('reveal-countries').innerHTML = player.countries;
+      document.getElementById('reveal-medals').innerHTML = player.medals;
+
+      card.classList.remove('visible');
+      setTimeout(() => card.classList.add('visible'), 50);
+    }}
+
+    function revealNext() {{
+      if (animationSkipped || currentIndex < 0) {{
+        finishAnimation();
+        return;
+      }}
+
+      showRevealCard(players[currentIndex], currentIndex);
+      currentIndex--;
+
+      const delay = currentIndex >= 0 && currentIndex < 3 ? 2500 : 1500;
+      setTimeout(revealNext, delay);
+    }}
+
+    function finishAnimation() {{
+      document.getElementById('intro-overlay').classList.add('hidden');
+      document.getElementById('skip-btn').style.display = 'none';
+
+      // Animate scoreboard rows
+      const rows = document.querySelectorAll('.player-row');
+      rows.forEach((row, i) => {{
+        setTimeout(() => row.classList.add('visible'), i * 100);
+      }});
+    }}
+
+    function skipAnimation() {{
+      animationSkipped = true;
+      finishAnimation();
+    }}
+
+    function toggleEvents(friendName) {{
+      const panel = document.getElementById('events-' + friendName.toLowerCase());
+      if (panel) {{
+        panel.classList.toggle('open');
+      }}
+    }}
+
+    // Start animation after page load
+    setTimeout(revealNext, 500);
+  </script>
 </body>
 </html>"""
 
@@ -572,7 +1005,7 @@ def build_daily_double_table(results):
 
     for event in results:
         if event.get("scheduled"):
-            result_text = "Scheduled for later"
+            result_text = '<span style="color: #888;">Scheduled for later</span>'
         else:
             result_text = ", ".join(
                 [f"{m} – {c}" for m, c in event["results"]]
@@ -586,9 +1019,9 @@ def build_daily_double_table(results):
         """)
 
     return f"""
-    <div class="section">
+    <div class="daily-double">
       <h2>Daily Double Events</h2>
-      <table class="scoreboard">
+      <table>
         <thead>
             <tr>
                 <th>Event</th>
@@ -639,79 +1072,180 @@ if __name__ == "__main__":
             return ""
         return "".join(chr(127397 + ord(c)) for c in iso)
 
+    # Detailed event data for each country
+    EVENT_DATA = {
+        "FRA": [
+            {"event": "Biathlon – Mixed Relay", "medal": "gold", "url": "https://en.wikipedia.org/wiki/Biathlon_at_the_2026_Winter_Olympics_%E2%80%93_Mixed_relay"},
+        ],
+        "ITA": [
+            {"event": "Speed Skating – Women's 3000m", "medal": "gold", "url": "https://en.wikipedia.org/wiki/Speed_skating_at_the_2026_Winter_Olympics_%E2%80%93_Women's_3000_metres"},
+            {"event": "Alpine Skiing – Men's Downhill", "medal": "silver", "url": "https://en.wikipedia.org/wiki/Alpine_skiing_at_the_2026_Winter_Olympics_%E2%80%93_Men's_downhill"},
+            {"event": "Biathlon – Mixed Relay", "medal": "silver", "url": "https://en.wikipedia.org/wiki/Biathlon_at_the_2026_Winter_Olympics_%E2%80%93_Mixed_relay"},
+            {"event": "Alpine Skiing – Women's Downhill", "medal": "bronze", "url": "https://en.wikipedia.org/wiki/Alpine_skiing_at_the_2026_Winter_Olympics_%E2%80%93_Women's_downhill"},
+            {"event": "Snowboard – Women's PGS", "medal": "bronze", "url": "https://en.wikipedia.org/wiki/Snowboarding_at_the_2026_Winter_Olympics_%E2%80%93_Women's_parallel_giant_slalom"},
+            {"event": "Figure Skating – Team Event", "medal": "bronze", "url": "https://en.wikipedia.org/wiki/Figure_skating_at_the_2026_Winter_Olympics_%E2%80%93_Team_event"},
+        ],
+        "SUI": [
+            {"event": "Alpine Skiing – Men's Downhill", "medal": "gold", "url": "https://en.wikipedia.org/wiki/Alpine_skiing_at_the_2026_Winter_Olympics_%E2%80%93_Men's_downhill"},
+            {"event": "Alpine Skiing – Team Combined", "medal": "gold", "url": "https://en.wikipedia.org/wiki/Alpine_skiing_at_the_2026_Winter_Olympics_%E2%80%93_Team_combined"},
+            {"event": "Ski Jumping – Women's NH", "medal": "gold", "url": "https://en.wikipedia.org/wiki/Ski_jumping_at_the_2026_Winter_Olympics_%E2%80%93_Women's_normal_hill_individual"},
+            {"event": "Alpine Skiing – Men's Downhill", "medal": "silver", "url": "https://en.wikipedia.org/wiki/Alpine_skiing_at_the_2026_Winter_Olympics_%E2%80%93_Men's_downhill"},
+            {"event": "Luge – Women's Singles", "medal": "bronze", "url": "https://en.wikipedia.org/wiki/Luge_at_the_2026_Winter_Olympics_%E2%80%93_Women's_singles"},
+        ],
+        "NOR": [
+            {"event": "Ski Jumping – Women's NH", "medal": "gold", "url": "https://en.wikipedia.org/wiki/Ski_jumping_at_the_2026_Winter_Olympics_%E2%80%93_Women's_normal_hill_individual"},
+            {"event": "Cross-Country – Men's Skiathlon", "medal": "gold", "url": "https://en.wikipedia.org/wiki/Cross-country_skiing_at_the_2026_Winter_Olympics_%E2%80%93_Men's_skiathlon"},
+            {"event": "Biathlon – Women's Individual", "medal": "gold", "url": "https://en.wikipedia.org/wiki/Biathlon_at_the_2026_Winter_Olympics"},
+            {"event": "Speed Skating – Women's 3000m", "medal": "silver", "url": "https://en.wikipedia.org/wiki/Speed_skating_at_the_2026_Winter_Olympics_%E2%80%93_Women's_3000_metres"},
+            {"event": "Cross-Country – Men's Skiathlon", "medal": "bronze", "url": "https://en.wikipedia.org/wiki/Cross-country_skiing_at_the_2026_Winter_Olympics_%E2%80%93_Men's_skiathlon"},
+            {"event": "Ski Jumping – Women's NH", "medal": "bronze", "url": "https://en.wikipedia.org/wiki/Ski_jumping_at_the_2026_Winter_Olympics_%E2%80%93_Women's_normal_hill_individual"},
+        ],
+        "CZE": [
+            {"event": "Snowboard – Women's PGS", "medal": "gold", "url": "https://en.wikipedia.org/wiki/Snowboarding_at_the_2026_Winter_Olympics_%E2%80%93_Women's_parallel_giant_slalom"},
+            {"event": "Speed Skating – Women's 500m", "medal": "silver", "url": "https://en.wikipedia.org/wiki/Speed_skating_at_the_2026_Winter_Olympics"},
+        ],
+        "GER": [
+            {"event": "Luge – Men's Singles", "medal": "gold", "url": "https://en.wikipedia.org/wiki/Luge_at_the_2026_Winter_Olympics_%E2%80%93_Men's_singles"},
+            {"event": "Luge – Men's Singles", "medal": "gold", "url": "https://en.wikipedia.org/wiki/Luge_at_the_2026_Winter_Olympics_%E2%80%93_Men's_singles"},
+            {"event": "Alpine Skiing – Women's Downhill", "medal": "silver", "url": "https://en.wikipedia.org/wiki/Alpine_skiing_at_the_2026_Winter_Olympics_%E2%80%93_Women's_downhill"},
+            {"event": "Biathlon – Mixed Relay", "medal": "bronze", "url": "https://en.wikipedia.org/wiki/Biathlon_at_the_2026_Winter_Olympics_%E2%80%93_Mixed_relay"},
+        ],
+        "AUT": [
+            {"event": "Snowboard – Men's PGS", "medal": "gold", "url": "https://en.wikipedia.org/wiki/Snowboarding_at_the_2026_Winter_Olympics_%E2%80%93_Men's_parallel_giant_slalom"},
+            {"event": "Snowboard – Women's PGS", "medal": "silver", "url": "https://en.wikipedia.org/wiki/Snowboarding_at_the_2026_Winter_Olympics_%E2%80%93_Women's_parallel_giant_slalom"},
+            {"event": "Alpine Skiing – Team Combined", "medal": "silver", "url": "https://en.wikipedia.org/wiki/Alpine_skiing_at_the_2026_Winter_Olympics_%E2%80%93_Team_combined"},
+            {"event": "Luge – Men's Singles", "medal": "silver", "url": "https://en.wikipedia.org/wiki/Luge_at_the_2026_Winter_Olympics_%E2%80%93_Men's_singles"},
+        ],
+        "SWE": [
+            {"event": "Curling – Mixed Doubles", "medal": "gold", "url": "https://en.wikipedia.org/wiki/Curling_at_the_2026_Winter_Olympics_%E2%80%93_Mixed_doubles"},
+            {"event": "Cross-Country – Men's Skiathlon", "medal": "silver", "url": "https://en.wikipedia.org/wiki/Cross-country_skiing_at_the_2026_Winter_Olympics_%E2%80%93_Men's_skiathlon"},
+        ],
+        "NED": [
+            {"event": "Speed Skating – Women's 1000m", "medal": "gold", "url": "https://en.wikipedia.org/wiki/Speed_skating_at_the_2026_Winter_Olympics_%E2%80%93_Women's_1000_metres"},
+            {"event": "Speed Skating – Women's 1000m", "medal": "silver", "url": "https://en.wikipedia.org/wiki/Speed_skating_at_the_2026_Winter_Olympics_%E2%80%93_Women's_1000_metres"},
+        ],
+        "CAN": [
+            {"event": "Speed Skating – Women's 3000m", "medal": "bronze", "url": "https://en.wikipedia.org/wiki/Speed_skating_at_the_2026_Winter_Olympics_%E2%80%93_Women's_3000_metres"},
+            {"event": "Freestyle Skiing – Women's Slopestyle", "medal": "bronze", "url": "https://en.wikipedia.org/wiki/Freestyle_skiing_at_the_2026_Winter_Olympics_%E2%80%93_Women's_slopestyle"},
+        ],
+        "KOR": [
+            {"event": "Snowboard – Men's PGS", "medal": "silver", "url": "https://en.wikipedia.org/wiki/Snowboarding_at_the_2026_Winter_Olympics_%E2%80%93_Men's_parallel_giant_slalom"},
+            {"event": "Short Track – Mixed Relay", "medal": "bronze", "url": "https://en.wikipedia.org/wiki/Short_track_speed_skating_at_the_2026_Winter_Olympics"},
+        ],
+        "CHN": [
+            {"event": "Freestyle Skiing – Women's Slopestyle", "medal": "silver", "url": "https://en.wikipedia.org/wiki/Freestyle_skiing_at_the_2026_Winter_Olympics_%E2%80%93_Women's_slopestyle"},
+            {"event": "Snowboard – Men's Big Air", "medal": "bronze", "url": "https://en.wikipedia.org/wiki/Snowboarding_at_the_2026_Winter_Olympics_%E2%80%93_Men's_big_air"},
+        ],
+        "POL": [
+            {"event": "Ski Jumping – Team Event", "medal": "silver", "url": "https://en.wikipedia.org/wiki/Ski_jumping_at_the_2026_Winter_Olympics"},
+        ],
+        "NZL": [
+            {"event": "Freestyle Skiing – Women's Slopestyle", "medal": "silver", "url": "https://en.wikipedia.org/wiki/Freestyle_skiing_at_the_2026_Winter_Olympics_%E2%80%93_Women's_slopestyle"},
+        ],
+        "SLO": [
+            {"event": "Ski Jumping – Women's NH", "medal": "silver", "url": "https://en.wikipedia.org/wiki/Ski_jumping_at_the_2026_Winter_Olympics_%E2%80%93_Women's_normal_hill_individual"},
+        ],
+        "JPN": [
+            {"event": "Ski Jumping – Men's NH", "medal": "gold", "url": "https://en.wikipedia.org/wiki/Ski_jumping_at_the_2026_Winter_Olympics_%E2%80%93_Men's_normal_hill_individual"},
+            {"event": "Figure Skating – Team Event", "medal": "silver", "url": "https://en.wikipedia.org/wiki/Figure_skating_at_the_2026_Winter_Olympics_%E2%80%93_Team_event"},
+            {"event": "Speed Skating – Men's 5000m", "medal": "silver", "url": "https://en.wikipedia.org/wiki/Speed_skating_at_the_2026_Winter_Olympics"},
+            {"event": "Snowboard – Men's Halfpipe", "medal": "bronze", "url": "https://en.wikipedia.org/wiki/Snowboarding_at_the_2026_Winter_Olympics"},
+        ],
+        "USA": [
+            {"event": "Snowboard – Men's Slopestyle", "medal": "gold", "url": "https://en.wikipedia.org/wiki/Snowboarding_at_the_2026_Winter_Olympics_%E2%80%93_Men's_slopestyle"},
+            {"event": "Figure Skating – Team Event", "medal": "gold", "url": "https://en.wikipedia.org/wiki/Figure_skating_at_the_2026_Winter_Olympics_%E2%80%93_Team_event"},
+        ],
+    }
+
     def build_pretty_table(df):
         rows = []
+        player_data = []
+        medal_icons = {"gold": "🥇", "silver": "🥈", "bronze": "🥉"}
+
         for i, row in df.reset_index(drop=True).iterrows():
             rank = i + 1
+            friend_name = row['friend']
+            friend_lower = friend_name.lower()
 
             flag1 = noc_to_flag(row["noc_1"])
             flag2 = noc_to_flag(row["noc_2"])
 
-            countries_html = f"""
-            <div class="country-block">
-                <div>{flag1} {row['country_1']} — 🥇{row['gold_1']} 🥈{row['silver_1']} 🥉{row['bronze_1']}</div>
-                <div>{flag2} {row['country_2']} — 🥇{row['gold_2']} 🥈{row['silver_2']} 🥉{row['bronze_2']}</div>
-            </div>
-            """
+            # Get event data for both countries
+            events1 = EVENT_DATA.get(row["noc_1"], [])
+            events2 = EVENT_DATA.get(row["noc_2"], [])
+
+            countries_display = f"{flag1} {row['country_1']} &amp; {flag2} {row['country_2']}"
+            medals_display = f"🥇{int(row['gold_1'] + row['gold_2'])} 🥈{int(row['silver_1'] + row['silver_2'])} 🥉{int(row['bronze_1'] + row['bronze_2'])}"
+
+            # Build events panel with individual event links
+            events_html = ""
+
+            # Country 1 events
+            if events1:
+                events_html += f'<div class="country-events"><h5>{flag1} {row["country_1"]}</h5>'
+                for evt in events1:
+                    medal_icon = medal_icons.get(evt["medal"], "🏅")
+                    events_html += f'<a href="{evt["url"]}" target="_blank" class="event-link"><span class="event-item">{medal_icon} {evt["event"]}</span></a>'
+                events_html += '</div>'
+
+            # Country 2 events
+            if events2:
+                events_html += f'<div class="country-events"><h5>{flag2} {row["country_2"]}</h5>'
+                for evt in events2:
+                    medal_icon = medal_icons.get(evt["medal"], "🏅")
+                    events_html += f'<a href="{evt["url"]}" target="_blank" class="event-link"><span class="event-item">{medal_icon} {evt["event"]}</span></a>'
+                events_html += '</div>'
+
+            if not events_html:
+                events_html = '<span style="color: #888;">No medals yet - keep cheering! 📣</span>'
+
+            rank_class = f"rank-{rank}" if rank <= 3 else ""
 
             rows.append(f"""
-            <tr>
-                <td>{rank}</td>
-                <td><strong>{row['friend']}</strong></td>
-                <td>{countries_html}</td>
-                <td><strong>{row['points_total']}</strong></td>
-            </tr>
-            """)
-
-        return f"""
-        <table class="scoreboard">
-            <thead>
-                <tr>
-                    <th>Rank</th>
-                    <th>Friend</th>
-                    <th>Countries</th>
-                    <th>Points</th>
-                </tr>
-            </thead>
-            <tbody>
-                {''.join(rows)}
-            </tbody>
-        </table>
-        """
-    def build_leader_banner(df):
-        top3 = df.head(3).reset_index(drop=True)
-        medals = ["🥇", "🥈", "🥉"]
-
-        rows = []
-        for i, row in top3.iterrows():
-            rows.append(f"""
-            <div class="leader">
-                <span class="medal">{medals[i]}</span>
-                <span class="name">{row['friend']}</span>
-                <span class="points">{row['points_total']} pts</span>
+            <div class="player-row {rank_class}" onclick="toggleEvents('{friend_lower}')">
+                <div class="rank-num">#{rank}</div>
+                <img class="player-pic" src="pics/{friend_lower}.png" alt="{friend_name}">
+                <div class="player-info">
+                    <div class="player-name">{friend_name}</div>
+                    <div class="player-countries">{flag1} {row['country_1']} &amp; {flag2} {row['country_2']}</div>
+                </div>
+                <div class="player-points">{row['points_total']}</div>
+            </div>
+            <div class="events-panel" id="events-{friend_lower}">
+                <h4>🏆 Medal Events</h4>
+                {events_html}
             </div>
             """)
 
-        return f"""
-        <div class="leaderboard">
-            {''.join(rows)}
-        </div>
-        """
+            # Build player data for animation
+            player_data.append({
+                "rank": rank,
+                "name": friend_name,
+                "pic": f"pics/{friend_lower}.png",
+                "points": row['points_total'],
+                "countries": f"{flag1} {row['country_1']} &amp; {flag2} {row['country_2']}",
+                "medals": f"🥇{int(row['gold_1'] + row['gold_2'])} 🥈{int(row['silver_1'] + row['silver_2'])} 🥉{int(row['bronze_1'] + row['bronze_2'])}"
+            })
 
+        # Generate JavaScript data
+        import json
+        player_json = json.dumps(player_data)
+
+        return f"""
+        <script>window.playerData = {player_json};</script>
+        {''.join(rows)}
+        """
     table_html = build_pretty_table(scored_df)
-    leader_html = build_leader_banner(scored_df)
 
     plot = make_plot(scored_df)
     plot_html = plot.to_html(full_html=False, include_plotlyjs="cdn")
 
     last_updated = pd.Timestamp.utcnow().strftime("%Y-%m-%d %H:%M UTC")
-    # OUTPUT_FILE.write_text(
-    #     build_html(leader_html + table_html, plot_html, last_updated)
-    # )
+
     daily_double_html = build_daily_double_table(double_results)
 
     OUTPUT_FILE.write_text(
-        build_html(leader_html + table_html + daily_double_html, plot_html, last_updated)
+        build_html(table_html + daily_double_html, plot_html, last_updated)
     )
 
 
