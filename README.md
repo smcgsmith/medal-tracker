@@ -1,5 +1,7 @@
 # Fantasy Olympics Medal Tracker
 
+https://smcgsmith.github.io/medal-tracker/ 
+
 This repo generates a static HTML page that tracks your fantasy draft points based on real medal counts. You can publish the `docs/` folder with GitHub Pages so everyone can view it.
 
 ## How it works
