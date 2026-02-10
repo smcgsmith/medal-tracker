@@ -282,6 +282,100 @@ def fetch_medals():
         print("Wikipedia fetch failed:", e)
         raise
 
+# -----------------------------
+# Fetch medal events by country
+# -----------------------------
+def fetch_medal_events():
+    """Fetch individual medal events from Wikipedia's medal winners page."""
+    events_by_noc = {}
+
+    # Reverse lookup: country name to NOC
+    country_to_noc = {v.lower(): k for k, v in {
+        "NOR": "Norway", "USA": "United States", "ITA": "Italy", "JPN": "Japan",
+        "AUT": "Austria", "GER": "Germany", "CZE": "Czech Republic", "FRA": "France",
+        "SWE": "Sweden", "SUI": "Switzerland", "CAN": "Canada", "NED": "Netherlands",
+        "CHN": "China", "POL": "Poland", "KOR": "South Korea", "FIN": "Finland",
+        "NZL": "New Zealand", "SLO": "Slovenia", "AUS": "Australia", "GBR": "Great Britain",
+        "BEL": "Belgium", "HUN": "Hungary", "SVK": "Slovakia", "BUL": "Bulgaria",
+    }.items()}
+
+    # Sport name mapping for URL generation
+    sport_prefixes = {
+        "alpine skiing": "Alpine_skiing_at_the_2026_Winter_Olympics",
+        "biathlon": "Biathlon_at_the_2026_Winter_Olympics",
+        "bobsleigh": "Bobsleigh_at_the_2026_Winter_Olympics",
+        "cross-country": "Cross-country_skiing_at_the_2026_Winter_Olympics",
+        "curling": "Curling_at_the_2026_Winter_Olympics",
+        "figure skating": "Figure_skating_at_the_2026_Winter_Olympics",
+        "freestyle skiing": "Freestyle_skiing_at_the_2026_Winter_Olympics",
+        "ice hockey": "Ice_hockey_at_the_2026_Winter_Olympics",
+        "luge": "Luge_at_the_2026_Winter_Olympics",
+        "nordic combined": "Nordic_combined_at_the_2026_Winter_Olympics",
+        "short track": "Short_track_speed_skating_at_the_2026_Winter_Olympics",
+        "skeleton": "Skeleton_at_the_2026_Winter_Olympics",
+        "ski jumping": "Ski_jumping_at_the_2026_Winter_Olympics",
+        "snowboard": "Snowboarding_at_the_2026_Winter_Olympics",
+        "speed skating": "Speed_skating_at_the_2026_Winter_Olympics",
+    }
+
+    try:
+        url = "https://en.wikipedia.org/wiki/List_of_2026_Winter_Olympics_medal_winners"
+        response = requests.get(url, headers=HEADERS, timeout=20)
+        response.raise_for_status()
+
+        tables = pd.read_html(io.StringIO(response.text))
+        current_sport = ""
+
+        for table in tables:
+            cols = [str(c).lower() for c in table.columns]
+            # Look for tables with event, gold, silver, bronze columns
+            if 'event' in cols and 'gold' in cols:
+                for _, row in table.iterrows():
+                    event_name = str(row.get('Event', row.get('event', '')))
+                    if not event_name or event_name == 'nan' or 'details' not in event_name.lower():
+                        continue
+
+                    # Clean up event name (remove "details" suffix)
+                    clean_event = event_name.replace(' details', '').replace(' Details', '').strip()
+
+                    # Process each medal type
+                    for medal_type in ['Gold', 'Silver', 'Bronze', 'gold', 'silver', 'bronze']:
+                        cell = str(row.get(medal_type, ''))
+                        if cell and cell != 'nan' and len(cell) > 3:
+                            # Extract country from end of cell (format: "Athlete Name  Country")
+                            # Try to find known country names
+                            cell_lower = cell.lower()
+                            found_noc = None
+
+                            for country_name, noc in country_to_noc.items():
+                                if country_name in cell_lower:
+                                    found_noc = noc
+                                    break
+
+                            if found_noc:
+                                if found_noc not in events_by_noc:
+                                    events_by_noc[found_noc] = []
+
+                                # Generate Wikipedia URL based on sport
+                                event_url = "https://en.wikipedia.org/wiki/2026_Winter_Olympics"
+                                for sport_key, sport_url in sport_prefixes.items():
+                                    if sport_key in clean_event.lower():
+                                        event_url = f"https://en.wikipedia.org/wiki/{sport_url}"
+                                        break
+
+                                events_by_noc[found_noc].append({
+                                    "event": clean_event,
+                                    "medal": medal_type.lower(),
+                                    "url": event_url
+                                })
+
+        print(f"Fetched medal events for {len(events_by_noc)} countries")
+        return events_by_noc
+
+    except Exception as e:
+        print(f"Failed to fetch medal events: {e}")
+        return {}
+
     # -----------------------------
 # Fetch daily double medals
 # -----------------------------
@@ -684,6 +778,11 @@ def build_html(table_html, plot_html, last_updated):
       font-weight: bold;
       color: #fff;
     }}
+    .stacked-medals {{
+      font-size: 0.7em;
+      margin-left: 8px;
+      letter-spacing: 2px;
+    }}
     .player-countries {{
       color: #aaa;
       font-size: 0.95em;
@@ -1050,19 +1149,13 @@ if __name__ == "__main__":
         if medals_df is None:
             raise
         print("Warning: using cached medal data (network request failed).")
-    #friends_df = load_friends()
-    #scored_df = build_friend_scores(friends_df, medals_df)
     friends_df = load_friends()
     double_df, double_results = fetch_daily_doubles()
     scored_df = build_friend_scores(friends_df, medals_df, double_df)
 
-
-    # def noc_to_flag(noc):
-    #     if not isinstance(noc, str) or len(noc) != 3:
-    #         return ""
-    #     # Convert ISO country code to emoji flag
-    #     code = noc[:2].upper()
-    #     return "".join(chr(127397 + ord(c)) for c in code)
+    # Fetch medal events dynamically
+    EVENT_DATA = fetch_medal_events()
+    print(f"Loaded events for {len(EVENT_DATA)} countries")
 
     def noc_to_flag(noc):
         if not isinstance(noc, str):
@@ -1071,91 +1164,6 @@ if __name__ == "__main__":
         if not iso:
             return ""
         return "".join(chr(127397 + ord(c)) for c in iso)
-
-    # Detailed event data for each country
-    EVENT_DATA = {
-        "FRA": [
-            {"event": "Biathlon – Mixed Relay", "medal": "gold", "url": "https://en.wikipedia.org/wiki/Biathlon_at_the_2026_Winter_Olympics_%E2%80%93_Mixed_relay"},
-        ],
-        "ITA": [
-            {"event": "Speed Skating – Women's 3000m", "medal": "gold", "url": "https://en.wikipedia.org/wiki/Speed_skating_at_the_2026_Winter_Olympics_%E2%80%93_Women's_3000_metres"},
-            {"event": "Alpine Skiing – Men's Downhill", "medal": "silver", "url": "https://en.wikipedia.org/wiki/Alpine_skiing_at_the_2026_Winter_Olympics_%E2%80%93_Men's_downhill"},
-            {"event": "Biathlon – Mixed Relay", "medal": "silver", "url": "https://en.wikipedia.org/wiki/Biathlon_at_the_2026_Winter_Olympics_%E2%80%93_Mixed_relay"},
-            {"event": "Alpine Skiing – Women's Downhill", "medal": "bronze", "url": "https://en.wikipedia.org/wiki/Alpine_skiing_at_the_2026_Winter_Olympics_%E2%80%93_Women's_downhill"},
-            {"event": "Snowboard – Women's PGS", "medal": "bronze", "url": "https://en.wikipedia.org/wiki/Snowboarding_at_the_2026_Winter_Olympics_%E2%80%93_Women's_parallel_giant_slalom"},
-            {"event": "Figure Skating – Team Event", "medal": "bronze", "url": "https://en.wikipedia.org/wiki/Figure_skating_at_the_2026_Winter_Olympics_%E2%80%93_Team_event"},
-        ],
-        "SUI": [
-            {"event": "Alpine Skiing – Men's Downhill", "medal": "gold", "url": "https://en.wikipedia.org/wiki/Alpine_skiing_at_the_2026_Winter_Olympics_%E2%80%93_Men's_downhill"},
-            {"event": "Alpine Skiing – Team Combined", "medal": "gold", "url": "https://en.wikipedia.org/wiki/Alpine_skiing_at_the_2026_Winter_Olympics_%E2%80%93_Team_combined"},
-            {"event": "Ski Jumping – Women's NH", "medal": "gold", "url": "https://en.wikipedia.org/wiki/Ski_jumping_at_the_2026_Winter_Olympics_%E2%80%93_Women's_normal_hill_individual"},
-            {"event": "Alpine Skiing – Men's Downhill", "medal": "silver", "url": "https://en.wikipedia.org/wiki/Alpine_skiing_at_the_2026_Winter_Olympics_%E2%80%93_Men's_downhill"},
-            {"event": "Luge – Women's Singles", "medal": "bronze", "url": "https://en.wikipedia.org/wiki/Luge_at_the_2026_Winter_Olympics_%E2%80%93_Women's_singles"},
-        ],
-        "NOR": [
-            {"event": "Ski Jumping – Women's NH", "medal": "gold", "url": "https://en.wikipedia.org/wiki/Ski_jumping_at_the_2026_Winter_Olympics_%E2%80%93_Women's_normal_hill_individual"},
-            {"event": "Cross-Country – Men's Skiathlon", "medal": "gold", "url": "https://en.wikipedia.org/wiki/Cross-country_skiing_at_the_2026_Winter_Olympics_%E2%80%93_Men's_skiathlon"},
-            {"event": "Biathlon – Women's Individual", "medal": "gold", "url": "https://en.wikipedia.org/wiki/Biathlon_at_the_2026_Winter_Olympics"},
-            {"event": "Speed Skating – Women's 3000m", "medal": "silver", "url": "https://en.wikipedia.org/wiki/Speed_skating_at_the_2026_Winter_Olympics_%E2%80%93_Women's_3000_metres"},
-            {"event": "Cross-Country – Men's Skiathlon", "medal": "bronze", "url": "https://en.wikipedia.org/wiki/Cross-country_skiing_at_the_2026_Winter_Olympics_%E2%80%93_Men's_skiathlon"},
-            {"event": "Ski Jumping – Women's NH", "medal": "bronze", "url": "https://en.wikipedia.org/wiki/Ski_jumping_at_the_2026_Winter_Olympics_%E2%80%93_Women's_normal_hill_individual"},
-        ],
-        "CZE": [
-            {"event": "Snowboard – Women's PGS", "medal": "gold", "url": "https://en.wikipedia.org/wiki/Snowboarding_at_the_2026_Winter_Olympics_%E2%80%93_Women's_parallel_giant_slalom"},
-            {"event": "Speed Skating – Women's 500m", "medal": "silver", "url": "https://en.wikipedia.org/wiki/Speed_skating_at_the_2026_Winter_Olympics"},
-        ],
-        "GER": [
-            {"event": "Luge – Men's Singles", "medal": "gold", "url": "https://en.wikipedia.org/wiki/Luge_at_the_2026_Winter_Olympics_%E2%80%93_Men's_singles"},
-            {"event": "Luge – Men's Singles", "medal": "gold", "url": "https://en.wikipedia.org/wiki/Luge_at_the_2026_Winter_Olympics_%E2%80%93_Men's_singles"},
-            {"event": "Alpine Skiing – Women's Downhill", "medal": "silver", "url": "https://en.wikipedia.org/wiki/Alpine_skiing_at_the_2026_Winter_Olympics_%E2%80%93_Women's_downhill"},
-            {"event": "Biathlon – Mixed Relay", "medal": "bronze", "url": "https://en.wikipedia.org/wiki/Biathlon_at_the_2026_Winter_Olympics_%E2%80%93_Mixed_relay"},
-        ],
-        "AUT": [
-            {"event": "Snowboard – Men's PGS", "medal": "gold", "url": "https://en.wikipedia.org/wiki/Snowboarding_at_the_2026_Winter_Olympics_%E2%80%93_Men's_parallel_giant_slalom"},
-            {"event": "Snowboard – Women's PGS", "medal": "silver", "url": "https://en.wikipedia.org/wiki/Snowboarding_at_the_2026_Winter_Olympics_%E2%80%93_Women's_parallel_giant_slalom"},
-            {"event": "Alpine Skiing – Team Combined", "medal": "silver", "url": "https://en.wikipedia.org/wiki/Alpine_skiing_at_the_2026_Winter_Olympics_%E2%80%93_Team_combined"},
-            {"event": "Luge – Men's Singles", "medal": "silver", "url": "https://en.wikipedia.org/wiki/Luge_at_the_2026_Winter_Olympics_%E2%80%93_Men's_singles"},
-        ],
-        "SWE": [
-            {"event": "Curling – Mixed Doubles", "medal": "gold", "url": "https://en.wikipedia.org/wiki/Curling_at_the_2026_Winter_Olympics_%E2%80%93_Mixed_doubles"},
-            {"event": "Cross-Country – Men's Skiathlon", "medal": "silver", "url": "https://en.wikipedia.org/wiki/Cross-country_skiing_at_the_2026_Winter_Olympics_%E2%80%93_Men's_skiathlon"},
-        ],
-        "NED": [
-            {"event": "Speed Skating – Women's 1000m", "medal": "gold", "url": "https://en.wikipedia.org/wiki/Speed_skating_at_the_2026_Winter_Olympics_%E2%80%93_Women's_1000_metres"},
-            {"event": "Speed Skating – Women's 1000m", "medal": "silver", "url": "https://en.wikipedia.org/wiki/Speed_skating_at_the_2026_Winter_Olympics_%E2%80%93_Women's_1000_metres"},
-        ],
-        "CAN": [
-            {"event": "Speed Skating – Women's 3000m", "medal": "bronze", "url": "https://en.wikipedia.org/wiki/Speed_skating_at_the_2026_Winter_Olympics_%E2%80%93_Women's_3000_metres"},
-            {"event": "Freestyle Skiing – Women's Slopestyle", "medal": "bronze", "url": "https://en.wikipedia.org/wiki/Freestyle_skiing_at_the_2026_Winter_Olympics_%E2%80%93_Women's_slopestyle"},
-        ],
-        "KOR": [
-            {"event": "Snowboard – Men's PGS", "medal": "silver", "url": "https://en.wikipedia.org/wiki/Snowboarding_at_the_2026_Winter_Olympics_%E2%80%93_Men's_parallel_giant_slalom"},
-            {"event": "Short Track – Mixed Relay", "medal": "bronze", "url": "https://en.wikipedia.org/wiki/Short_track_speed_skating_at_the_2026_Winter_Olympics"},
-        ],
-        "CHN": [
-            {"event": "Freestyle Skiing – Women's Slopestyle", "medal": "silver", "url": "https://en.wikipedia.org/wiki/Freestyle_skiing_at_the_2026_Winter_Olympics_%E2%80%93_Women's_slopestyle"},
-            {"event": "Snowboard – Men's Big Air", "medal": "bronze", "url": "https://en.wikipedia.org/wiki/Snowboarding_at_the_2026_Winter_Olympics_%E2%80%93_Men's_big_air"},
-        ],
-        "POL": [
-            {"event": "Ski Jumping – Team Event", "medal": "silver", "url": "https://en.wikipedia.org/wiki/Ski_jumping_at_the_2026_Winter_Olympics"},
-        ],
-        "NZL": [
-            {"event": "Freestyle Skiing – Women's Slopestyle", "medal": "silver", "url": "https://en.wikipedia.org/wiki/Freestyle_skiing_at_the_2026_Winter_Olympics_%E2%80%93_Women's_slopestyle"},
-        ],
-        "SLO": [
-            {"event": "Ski Jumping – Women's NH", "medal": "silver", "url": "https://en.wikipedia.org/wiki/Ski_jumping_at_the_2026_Winter_Olympics_%E2%80%93_Women's_normal_hill_individual"},
-        ],
-        "JPN": [
-            {"event": "Ski Jumping – Men's NH", "medal": "gold", "url": "https://en.wikipedia.org/wiki/Ski_jumping_at_the_2026_Winter_Olympics_%E2%80%93_Men's_normal_hill_individual"},
-            {"event": "Figure Skating – Team Event", "medal": "silver", "url": "https://en.wikipedia.org/wiki/Figure_skating_at_the_2026_Winter_Olympics_%E2%80%93_Team_event"},
-            {"event": "Speed Skating – Men's 5000m", "medal": "silver", "url": "https://en.wikipedia.org/wiki/Speed_skating_at_the_2026_Winter_Olympics"},
-            {"event": "Snowboard – Men's Halfpipe", "medal": "bronze", "url": "https://en.wikipedia.org/wiki/Snowboarding_at_the_2026_Winter_Olympics"},
-        ],
-        "USA": [
-            {"event": "Snowboard – Men's Slopestyle", "medal": "gold", "url": "https://en.wikipedia.org/wiki/Snowboarding_at_the_2026_Winter_Olympics_%E2%80%93_Men's_slopestyle"},
-            {"event": "Figure Skating – Team Event", "medal": "gold", "url": "https://en.wikipedia.org/wiki/Figure_skating_at_the_2026_Winter_Olympics_%E2%80%93_Team_event"},
-        ],
-    }
 
     def build_pretty_table(df):
         rows = []
@@ -1174,8 +1182,15 @@ if __name__ == "__main__":
             events1 = EVENT_DATA.get(row["noc_1"], [])
             events2 = EVENT_DATA.get(row["noc_2"], [])
 
+            # Build stacked medals display (🥇🥇🥈🥈🥉 etc)
+            total_gold = int(row['gold_1'] + row['gold_2'])
+            total_silver = int(row['silver_1'] + row['silver_2'])
+            total_bronze = int(row['bronze_1'] + row['bronze_2'])
+            stacked_medals = "🥇" * total_gold + "🥈" * total_silver + "🥉" * total_bronze
+            if not stacked_medals:
+                stacked_medals = "—"
+
             countries_display = f"{flag1} {row['country_1']} &amp; {flag2} {row['country_2']}"
-            medals_display = f"🥇{int(row['gold_1'] + row['gold_2'])} 🥈{int(row['silver_1'] + row['silver_2'])} 🥉{int(row['bronze_1'] + row['bronze_2'])}"
 
             # Build events panel with individual event links
             events_html = ""
@@ -1206,7 +1221,7 @@ if __name__ == "__main__":
                 <div class="rank-num">#{rank}</div>
                 <img class="player-pic" src="pics/{friend_lower}.png" alt="{friend_name}">
                 <div class="player-info">
-                    <div class="player-name">{friend_name}</div>
+                    <div class="player-name">{friend_name} <span class="stacked-medals">{stacked_medals}</span></div>
                     <div class="player-countries">{flag1} {row['country_1']} &amp; {flag2} {row['country_2']}</div>
                 </div>
                 <div class="player-points">{row['points_total']}</div>
@@ -1224,7 +1239,7 @@ if __name__ == "__main__":
                 "pic": f"pics/{friend_lower}.png",
                 "points": row['points_total'],
                 "countries": f"{flag1} {row['country_1']} &amp; {flag2} {row['country_2']}",
-                "medals": f"🥇{int(row['gold_1'] + row['gold_2'])} 🥈{int(row['silver_1'] + row['silver_2'])} 🥉{int(row['bronze_1'] + row['bronze_2'])}"
+                "medals": stacked_medals
             })
 
         # Generate JavaScript data
