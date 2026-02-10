@@ -282,99 +282,8 @@ def fetch_medals():
         print("Wikipedia fetch failed:", e)
         raise
 
-# -----------------------------
-# Fetch medal events by country
-# -----------------------------
-def fetch_medal_events():
-    """Fetch individual medal events from Wikipedia's medal winners page."""
-    events_by_noc = {}
-
-    # Reverse lookup: country name to NOC
-    country_to_noc = {v.lower(): k for k, v in {
-        "NOR": "Norway", "USA": "United States", "ITA": "Italy", "JPN": "Japan",
-        "AUT": "Austria", "GER": "Germany", "CZE": "Czech Republic", "FRA": "France",
-        "SWE": "Sweden", "SUI": "Switzerland", "CAN": "Canada", "NED": "Netherlands",
-        "CHN": "China", "POL": "Poland", "KOR": "South Korea", "FIN": "Finland",
-        "NZL": "New Zealand", "SLO": "Slovenia", "AUS": "Australia", "GBR": "Great Britain",
-        "BEL": "Belgium", "HUN": "Hungary", "SVK": "Slovakia", "BUL": "Bulgaria",
-    }.items()}
-
-    # Sport name mapping for URL generation
-    sport_prefixes = {
-        "alpine skiing": "Alpine_skiing_at_the_2026_Winter_Olympics",
-        "biathlon": "Biathlon_at_the_2026_Winter_Olympics",
-        "bobsleigh": "Bobsleigh_at_the_2026_Winter_Olympics",
-        "cross-country": "Cross-country_skiing_at_the_2026_Winter_Olympics",
-        "curling": "Curling_at_the_2026_Winter_Olympics",
-        "figure skating": "Figure_skating_at_the_2026_Winter_Olympics",
-        "freestyle skiing": "Freestyle_skiing_at_the_2026_Winter_Olympics",
-        "ice hockey": "Ice_hockey_at_the_2026_Winter_Olympics",
-        "luge": "Luge_at_the_2026_Winter_Olympics",
-        "nordic combined": "Nordic_combined_at_the_2026_Winter_Olympics",
-        "short track": "Short_track_speed_skating_at_the_2026_Winter_Olympics",
-        "skeleton": "Skeleton_at_the_2026_Winter_Olympics",
-        "ski jumping": "Ski_jumping_at_the_2026_Winter_Olympics",
-        "snowboard": "Snowboarding_at_the_2026_Winter_Olympics",
-        "speed skating": "Speed_skating_at_the_2026_Winter_Olympics",
-    }
-
-    try:
-        url = "https://en.wikipedia.org/wiki/List_of_2026_Winter_Olympics_medal_winners"
-        response = requests.get(url, headers=HEADERS, timeout=20)
-        response.raise_for_status()
-
-        tables = pd.read_html(io.StringIO(response.text))
-        current_sport = ""
-
-        for table in tables:
-            cols = [str(c).lower() for c in table.columns]
-            # Look for tables with event, gold, silver, bronze columns
-            if 'event' in cols and 'gold' in cols:
-                for _, row in table.iterrows():
-                    event_name = str(row.get('Event', row.get('event', '')))
-                    if not event_name or event_name == 'nan' or 'details' not in event_name.lower():
-                        continue
-
-                    # Clean up event name (remove "details" suffix)
-                    clean_event = event_name.replace(' details', '').replace(' Details', '').strip()
-
-                    # Process each medal type
-                    for medal_type in ['Gold', 'Silver', 'Bronze', 'gold', 'silver', 'bronze']:
-                        cell = str(row.get(medal_type, ''))
-                        if cell and cell != 'nan' and len(cell) > 3:
-                            # Extract country from end of cell (format: "Athlete Name  Country")
-                            # Try to find known country names
-                            cell_lower = cell.lower()
-                            found_noc = None
-
-                            for country_name, noc in country_to_noc.items():
-                                if country_name in cell_lower:
-                                    found_noc = noc
-                                    break
-
-                            if found_noc:
-                                if found_noc not in events_by_noc:
-                                    events_by_noc[found_noc] = []
-
-                                # Generate Wikipedia URL based on sport
-                                event_url = "https://en.wikipedia.org/wiki/2026_Winter_Olympics"
-                                for sport_key, sport_url in sport_prefixes.items():
-                                    if sport_key in clean_event.lower():
-                                        event_url = f"https://en.wikipedia.org/wiki/{sport_url}"
-                                        break
-
-                                events_by_noc[found_noc].append({
-                                    "event": clean_event,
-                                    "medal": medal_type.lower(),
-                                    "url": event_url
-                                })
-
-        print(f"Fetched medal events for {len(events_by_noc)} countries")
-        return events_by_noc
-
-    except Exception as e:
-        print(f"Failed to fetch medal events: {e}")
-        return {}
+# Import medal events fetcher from separate module
+from medal_events import fetch_medal_events
 
     # -----------------------------
 # Fetch daily double medals
@@ -844,6 +753,11 @@ def build_html(table_html, plot_html, last_updated):
     .event-item {{
       display: inline-block;
     }}
+    .athlete-name {{
+      color: #aaa;
+      font-size: 0.85em;
+      font-style: italic;
+    }}
 
     /* Skip button */
     #skip-btn {{
@@ -1190,9 +1104,14 @@ if __name__ == "__main__":
             if not stacked_medals:
                 stacked_medals = "—"
 
-            countries_display = f"{flag1} {row['country_1']} &amp; {flag2} {row['country_2']}"
+            # Build country display - handle single country (Team USA) vs dual countries
+            has_second_country = pd.notna(row['noc_2']) and str(row['noc_2']).strip() != ''
+            if has_second_country:
+                countries_display = f"{flag1} {row['country_1']} &amp; {flag2} {row['country_2']}"
+            else:
+                countries_display = f"{flag1} {row['country_1']}"
 
-            # Build events panel with individual event links
+            # Build events panel with individual event links and athlete names
             events_html = ""
 
             # Country 1 events
@@ -1200,7 +1119,9 @@ if __name__ == "__main__":
                 events_html += f'<div class="country-events"><h5>{flag1} {row["country_1"]}</h5>'
                 for evt in events1:
                     medal_icon = medal_icons.get(evt["medal"], "🏅")
-                    events_html += f'<a href="{evt["url"]}" target="_blank" class="event-link"><span class="event-item">{medal_icon} {evt["event"]}</span></a>'
+                    athlete = evt.get("athlete", "")
+                    athlete_str = f' <span class="athlete-name">({athlete})</span>' if athlete else ""
+                    events_html += f'<a href="{evt["url"]}" target="_blank" class="event-link"><span class="event-item">{medal_icon} {evt["event"]}{athlete_str}</span></a>'
                 events_html += '</div>'
 
             # Country 2 events
@@ -1208,7 +1129,9 @@ if __name__ == "__main__":
                 events_html += f'<div class="country-events"><h5>{flag2} {row["country_2"]}</h5>'
                 for evt in events2:
                     medal_icon = medal_icons.get(evt["medal"], "🏅")
-                    events_html += f'<a href="{evt["url"]}" target="_blank" class="event-link"><span class="event-item">{medal_icon} {evt["event"]}</span></a>'
+                    athlete = evt.get("athlete", "")
+                    athlete_str = f' <span class="athlete-name">({athlete})</span>' if athlete else ""
+                    events_html += f'<a href="{evt["url"]}" target="_blank" class="event-link"><span class="event-item">{medal_icon} {evt["event"]}{athlete_str}</span></a>'
                 events_html += '</div>'
 
             if not events_html:
@@ -1222,7 +1145,7 @@ if __name__ == "__main__":
                 <img class="player-pic" src="pics/{friend_lower}.png" alt="{friend_name}">
                 <div class="player-info">
                     <div class="player-name">{friend_name} <span class="stacked-medals">{stacked_medals}</span></div>
-                    <div class="player-countries">{flag1} {row['country_1']} &amp; {flag2} {row['country_2']}</div>
+                    <div class="player-countries">{countries_display}</div>
                 </div>
                 <div class="player-points">{row['points_total']}</div>
             </div>
@@ -1238,7 +1161,7 @@ if __name__ == "__main__":
                 "name": friend_name,
                 "pic": f"pics/{friend_lower}.png",
                 "points": row['points_total'],
-                "countries": f"{flag1} {row['country_1']} &amp; {flag2} {row['country_2']}",
+                "countries": countries_display,
                 "medals": stacked_medals
             })
 
