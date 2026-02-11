@@ -66,6 +66,11 @@ TABLE_TO_SPORT = {
 MEDAL_WINNERS_URL = "https://en.wikipedia.org/wiki/List_of_2026_Winter_Olympics_medal_winners"
 
 
+def clean_event_name(event_raw):
+    event_name = str(event_raw).replace(" details", "").replace("details", "").strip()
+    return re.sub(r"\s+", " ", event_name)
+
+
 def extract_athlete_and_country(cell_text):
     """Extract athlete name and country from cell like 'Franjo von Allmen  Switzerland'"""
     if not cell_text or cell_text == 'nan' or len(cell_text) < 3:
@@ -87,10 +92,9 @@ def extract_athlete_and_country(cell_text):
     return None, None
 
 
-def fetch_medal_events():
-    """Fetch ALL medal events from the comprehensive Wikipedia page."""
-    events_by_noc = {}
-
+def fetch_medal_winner_rows():
+    """Fetch medal-winning rows from the comprehensive Wikipedia page."""
+    winner_rows = []
     print("Fetching medal events from comprehensive Wikipedia page...")
 
     try:
@@ -101,59 +105,80 @@ def fetch_medal_events():
         print(f"  Found {len(tables)} tables on page")
 
         for table_idx, table in enumerate(tables):
-            # Check if this table has the right structure
             cols = [str(c).lower() for c in table.columns]
             if 'event' not in cols or 'gold' not in cols:
                 continue
 
-            # Get sport info from our mapping
             sport_info = TABLE_TO_SPORT.get(table_idx)
             if not sport_info:
-                # Try to infer from table content or skip
                 continue
 
             sport_name, gender_prefix = sport_info
 
-            # Process each row
             for _, row in table.iterrows():
                 event_raw = str(row.get('Event', ''))
                 if not event_raw or event_raw == 'nan':
                     continue
 
-                # Clean event name
-                event_name = event_raw.replace(' details', '').replace('details', '').strip()
+                event_name = clean_event_name(event_raw)
                 if not event_name or event_name.lower() == 'event':
                     continue
 
-                # Build full event name with sport
                 if gender_prefix:
                     full_event = f"{gender_prefix} {sport_name}: {event_name}"
                 else:
                     full_event = f"{sport_name}: {event_name}"
 
-                # Process each medal column
                 for medal_type in ['Gold', 'Silver', 'Bronze']:
                     cell = str(row.get(medal_type, ''))
                     if not cell or cell == 'nan' or cell == 'NaN':
                         continue
 
                     athlete, noc = extract_athlete_and_country(cell)
-
                     if noc and athlete:
-                        if noc not in events_by_noc:
-                            events_by_noc[noc] = []
-
-                        events_by_noc[noc].append({
-                            "event": full_event,
+                        winner_rows.append({
+                            "sport": sport_name,
+                            "gender": gender_prefix,
+                            "event": event_name,
+                            "full_event": full_event,
                             "athlete": athlete,
                             "medal": medal_type.lower(),
-                            "url": MEDAL_WINNERS_URL
+                            "noc": noc,
+                            "url": MEDAL_WINNERS_URL,
                         })
 
-        print(f"Fetched medal events for {len(events_by_noc)} countries")
+        print(f"Fetched {len(winner_rows)} medal-winning entries")
 
     except Exception as e:
         print(f"  Error fetching medal events: {e}")
+        return []
+
+    return winner_rows
+
+
+def fetch_medal_events(winner_rows=None):
+    """Fetch ALL medal events grouped by country NOC."""
+    events_by_noc = {}
+
+    if winner_rows is None:
+        winner_rows = fetch_medal_winner_rows()
+
+    for row in winner_rows:
+        noc = row.get("noc")
+        if not noc:
+            continue
+
+        if noc not in events_by_noc:
+            events_by_noc[noc] = []
+
+        events_by_noc[noc].append({
+            "event": row["full_event"],
+            "athlete": row["athlete"],
+            "medal": row["medal"],
+            "url": row["url"],
+        })
+
+    print(f"Fetched medal events for {len(events_by_noc)} countries")
 
     return events_by_noc
 

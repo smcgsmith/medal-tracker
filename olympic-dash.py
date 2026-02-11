@@ -113,19 +113,26 @@ FLAG_URL = "https://flagcdn.com/w40/{code}.png"
 DAILY_DOUBLE_EVENTS = [
     {
         "name": "Women's Ski Cross",
-        "url": "https://en.wikipedia.org/wiki/Freestyle_skiing_at_the_2026_Winter_Olympics_%E2%80%93_Women%27s_ski_cross",
+        "sport": "Freestyle skiing",
+        "gender": "Women's",
+        "event_keywords": ["ski cross"],
     },
     {
         "name": "Women's Luge Singles",
-        "url": "https://en.wikipedia.org/wiki/Luge_at_the_2026_Winter_Olympics_%E2%80%93_Women%27s_singles",
+        "sport": "Luge",
+        "event_keywords": ["women's singles"],
     },
     {
         "name": "Men's 1500m Speed Skating",
-        "url": "https://en.wikipedia.org/wiki/Speed_skating_at_the_2026_Winter_Olympics_%E2%80%93_Men%27s_1500_metres",
+        "sport": "Speed skating",
+        "gender": "Men's",
+        "event_keywords": ["1500"],
     },
     {
         "name": "Men's Alpine Slalom",
-        "url": "https://en.wikipedia.org/wiki/Alpine_skiing_at_the_2026_Winter_Olympics_%E2%80%93_Men%27s_slalom",
+        "sport": "Alpine skiing",
+        "gender": "Men's",
+        "event_keywords": ["slalom"],
     },
 ]
 
@@ -282,49 +289,70 @@ def fetch_medals():
         print("Wikipedia fetch failed:", e)
         raise
 
-# Import medal events fetcher from separate module
-from medal_events import fetch_medal_events
+# Import medal events fetchers from separate module
+from medal_events import fetch_medal_events, fetch_medal_winner_rows
 
-    # -----------------------------
+# -----------------------------
 # Fetch daily double medals
 # -----------------------------
-def fetch_daily_doubles():
+def normalize_text(value):
+    return re.sub(r"\s+", " ", str(value).strip().lower())
+
+
+def matches_daily_double(winner_row, event_config):
+    sport = normalize_text(winner_row.get("sport", ""))
+    gender = normalize_text(winner_row.get("gender", ""))
+    event_name = normalize_text(winner_row.get("event", ""))
+
+    required_sport = normalize_text(event_config.get("sport", ""))
+    required_gender = normalize_text(event_config.get("gender", ""))
+    required_keywords = [
+        normalize_text(keyword) for keyword in event_config.get("event_keywords", [])
+    ]
+
+    if required_sport and sport != required_sport:
+        return False
+    if required_gender and gender != required_gender:
+        return False
+
+    return all(keyword in event_name for keyword in required_keywords)
+
+
+def fetch_daily_doubles(winner_rows):
     rows = []
+    results_by_event = {
+        event["name"]: {"event": event["name"], "results": []}
+        for event in DAILY_DOUBLE_EVENTS
+    }
+
+    for winner_row in winner_rows:
+        medal = normalize_text(winner_row.get("medal", ""))
+        noc = winner_row.get("noc")
+
+        if medal not in ["gold", "silver", "bronze"] or not noc:
+            continue
+
+        for event in DAILY_DOUBLE_EVENTS:
+            if not matches_daily_double(winner_row, event):
+                continue
+
+            rows.append(
+                {
+                    "noc": noc,
+                    "gold": int(medal == "gold"),
+                    "silver": int(medal == "silver"),
+                    "bronze": int(medal == "bronze"),
+                }
+            )
+            results_by_event[event["name"]]["results"].append((medal.title(), noc))
+            break
+
     results = []
-
     for event in DAILY_DOUBLE_EVENTS:
-        try:
-            r = requests.get(event["url"], headers=HEADERS, timeout=20)
-            r.raise_for_status()
-            tables = pd.read_html(io.StringIO(r.text))
-
-            medal_table = tables[0]
-            medal_table.columns = [str(c).lower() for c in medal_table.columns]
-
-            event_result = {"event": event["name"], "results": []}
-
-            for _, row in medal_table.iterrows():
-                medal = str(row.get("medal", "")).lower()
-                noc = row.get("noc")
-
-                if medal in ["gold", "silver", "bronze"]:
-                    rows.append(
-                        {
-                            "noc": noc,
-                            "gold": int(medal == "gold"),
-                            "silver": int(medal == "silver"),
-                            "bronze": int(medal == "bronze"),
-                        }
-                    )
-                    event_result["results"].append((medal.title(), noc))
-
-            if not event_result["results"]:
-                event_result["scheduled"] = True
-
-            results.append(event_result)
-
-        except Exception:
-            results.append({"event": event["name"], "scheduled": True})
+        event_result = results_by_event[event["name"]]
+        if not event_result["results"]:
+            event_result["scheduled"] = True
+        results.append(event_result)
 
     df = pd.DataFrame(rows)
     if df.empty:
@@ -416,11 +444,21 @@ def build_friend_scores(friends_df, medals_df, double_df):
         def get_dd_points(noc):
             if noc in dd.index:
                 r = dd.loc[noc]
-                return (
+                # `double_df` contains only medals from daily-double events.
+                # This adds a bonus equal to normal medal points, so the final
+                # effect is exactly 2x for those medals:
+                # gold 3+3=6, silver 2+2=4, bronze 1+1=2.
+                # print(f"Calculating daily double points for {noc}: {r['gold']}G, {r['silver']}S, {r['bronze']}B")
+                # print(f"  Base points: {r['gold'] * SCORING_WEIGHTS['gold']} + {r['silver'] * SCORING_WEIGHTS['silver']} + {r['bronze'] * SCORING_WEIGHTS['bronze']}")
+                # print(f"  {noc} daily double points: {(r['gold'] * SCORING_WEIGHTS['gold'] + r['silver'] * SCORING_WEIGHTS['silver'] + r['bronze'] * SCORING_WEIGHTS['bronze']) * 2}")
+                points = (
                     r["gold"] * SCORING_WEIGHTS["gold"]
                     + r["silver"] * SCORING_WEIGHTS["silver"]
                     + r["bronze"] * SCORING_WEIGHTS["bronze"]
                 )
+                if noc == "NOR":
+                    points *= 0.5
+                return points
             return 0
 
         merged["daily_double"] = (
@@ -1070,11 +1108,12 @@ if __name__ == "__main__":
             raise
         print("Warning: using cached medal data (network request failed).")
     friends_df = load_friends()
-    double_df, double_results = fetch_daily_doubles()
+    winner_rows = fetch_medal_winner_rows()
+    double_df, double_results = fetch_daily_doubles(winner_rows)
     scored_df = build_friend_scores(friends_df, medals_df, double_df)
 
     # Fetch medal events dynamically
-    EVENT_DATA = fetch_medal_events()
+    EVENT_DATA = fetch_medal_events(winner_rows)
     print(f"Loaded events for {len(EVENT_DATA)} countries")
 
     def noc_to_flag(noc):
