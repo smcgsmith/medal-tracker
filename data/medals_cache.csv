@@ -1,10 +1,10 @@
 noc,country,gold,silver,bronze,total
-NOR,Norway,6,2,4,12
+NOR,Norway,7,2,4,13
+SUI,Switzerland,4,1,2,7
 GER,Germany,3,2,1,6
 SWE,Sweden,3,2,1,6
-SUI,Switzerland,3,1,1,5
-USA,United States,2,3,2,7
-AUT,Austria,2,3,0,5
+USA,United States,2,4,2,8
+AUT,Austria,2,4,0,6
 ITA,Italy,2,2,7,11
 JPN,Japan,2,2,4,8
 FRA,France,1,2,0,3
@@ -19,3 +19,4 @@ KOR,South Korea,0,1,1,2
 POL,Poland,0,1,0,1
 BEL,Belgium,0,0,1,1
 BUL,Bulgaria,0,0,1,1
+FIN,Finland,0,0,1,1
