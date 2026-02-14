@@ -3,16 +3,18 @@ NOR,Norway,8,3,7,18
 ITA,Italy,6,3,9,18
 USA,United States,4,7,3,14
 FRA,France,4,5,1,10
-GER,Germany,4,3,2,9
+GER,Germany,4,4,3,11
 SWE,Sweden,4,3,1,8
 SUI,Switzerland,4,1,2,7
 AUT,Austria,3,6,3,12
+JPN,Japan,3,3,8,14
 NED,Netherlands,3,3,1,7
-JPN,Japan,2,2,6,10
 CZE,Czech Republic,2,2,0,4
-AUS,Australia,2,0,0,2
+AUS,Australia,2,1,0,3
 KOR,South Korea,1,1,2,4
 SLO,Slovenia,1,1,0,2
+GBR,Great Britain,1,0,0,1
+,Kazakhstan,1,0,0,1
 CAN,Canada,0,3,4,7
 CHN,China,0,2,2,4
 POL,Poland,0,2,0,2
