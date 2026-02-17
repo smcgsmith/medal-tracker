@@ -123,8 +123,9 @@ DAILY_DOUBLE_EVENTS = [
         "event_keywords": ["women's singles"],
     },
     {
-        "name": "Men's 1500m Speed Skating",
-        "sport": "Speed skating",
+        # Explicitly short track (not long track speed skating).
+        "name": "Men's 1500m Short Track Speed Skating",
+        "sport": "Short track speed skating",
         "gender": "Men's",
         "event_keywords": ["1500"],
     },
