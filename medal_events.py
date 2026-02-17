@@ -29,6 +29,8 @@ COUNTRY_TO_NOC = {
     "monaco": "MON", "andorra": "AND", "liechtenstein": "LIE",
 }
 
+COUNTRY_NAMES_BY_LENGTH = sorted(COUNTRY_TO_NOC.keys(), key=len, reverse=True)
+
 # Map table indices to sport names (based on actual page structure)
 TABLE_TO_SPORT = {
     2: ("Alpine skiing", "Men's"),
@@ -76,18 +78,30 @@ def extract_athlete_and_country(cell_text):
     if not cell_text or cell_text == 'nan' or len(cell_text) < 3:
         return None, None
 
-    cell_text = str(cell_text).strip()
+    cell_text = re.sub(r"\[[^\]]+\]", "", str(cell_text))
+    cell_text = re.sub(r"\s+", " ", cell_text).strip()
     cell_lower = cell_text.lower()
 
-    # Check for full country name at the end of the text
-    for country_name, noc in COUNTRY_TO_NOC.items():
-        if country_name in cell_lower:
-            idx = cell_lower.rfind(country_name)  # Use rfind for last occurrence
-            athlete = cell_text[:idx].strip()
-            # Clean up athlete name
-            athlete = re.sub(r'\s+', ' ', athlete).strip()
-            if athlete and len(athlete) > 1:
-                return athlete, noc
+    # Prefer a strict country suffix match (longest names first).
+    for country_name in COUNTRY_NAMES_BY_LENGTH:
+        if not cell_lower.endswith(country_name):
+            continue
+        noc = COUNTRY_TO_NOC[country_name]
+        athlete = cell_text[:-len(country_name)].strip(" ,;:-")
+        athlete = re.sub(r'\s+', ' ', athlete).strip()
+        return athlete, noc
+
+    # Fallback: last whole-word country mention.
+    for country_name in COUNTRY_NAMES_BY_LENGTH:
+        match = None
+        for m in re.finditer(rf"\b{re.escape(country_name)}\b", cell_lower):
+            match = m
+        if not match:
+            continue
+        noc = COUNTRY_TO_NOC[country_name]
+        athlete = cell_text[:match.start()].strip(" ,;:-")
+        athlete = re.sub(r'\s+', ' ', athlete).strip()
+        return athlete, noc
 
     return None, None
 
@@ -95,6 +109,7 @@ def extract_athlete_and_country(cell_text):
 def fetch_medal_winner_rows():
     """Fetch medal-winning rows from the comprehensive Wikipedia page."""
     winner_rows = []
+    seen_rows = set()
     print("Fetching medal events from comprehensive Wikipedia page...")
 
     try:
@@ -135,17 +150,31 @@ def fetch_medal_winner_rows():
                         continue
 
                     athlete, noc = extract_athlete_and_country(cell)
-                    if noc and athlete:
-                        winner_rows.append({
-                            "sport": sport_name,
-                            "gender": gender_prefix,
-                            "event": event_name,
-                            "full_event": full_event,
-                            "athlete": athlete,
-                            "medal": medal_type.lower(),
-                            "noc": noc,
-                            "url": MEDAL_WINNERS_URL,
-                        })
+                    if not noc:
+                        continue
+
+                    row_data = {
+                        "sport": sport_name,
+                        "gender": gender_prefix,
+                        "event": event_name,
+                        "full_event": full_event,
+                        "athlete": athlete or "",
+                        "medal": medal_type.lower(),
+                        "noc": noc,
+                        "url": MEDAL_WINNERS_URL,
+                    }
+                    dedupe_key = (
+                        row_data["sport"].lower(),
+                        row_data["gender"].lower(),
+                        row_data["event"].lower(),
+                        row_data["medal"],
+                        row_data["noc"],
+                        row_data["athlete"].lower(),
+                    )
+                    if dedupe_key in seen_rows:
+                        continue
+                    seen_rows.add(dedupe_key)
+                    winner_rows.append(row_data)
 
         print(f"Fetched {len(winner_rows)} medal-winning entries")
 
@@ -159,6 +188,7 @@ def fetch_medal_winner_rows():
 def fetch_medal_events(winner_rows=None):
     """Fetch ALL medal events grouped by country NOC."""
     events_by_noc = {}
+    seen_by_noc = {}
 
     if winner_rows is None:
         winner_rows = fetch_medal_winner_rows()
@@ -170,13 +200,23 @@ def fetch_medal_events(winner_rows=None):
 
         if noc not in events_by_noc:
             events_by_noc[noc] = []
+            seen_by_noc[noc] = set()
 
-        events_by_noc[noc].append({
+        event_data = {
             "event": row["full_event"],
-            "athlete": row["athlete"],
+            "athlete": row.get("athlete", ""),
             "medal": row["medal"],
             "url": row["url"],
-        })
+        }
+        dedupe_key = (
+            event_data["event"].lower(),
+            event_data["medal"],
+            event_data["athlete"].lower(),
+        )
+        if dedupe_key in seen_by_noc[noc]:
+            continue
+        seen_by_noc[noc].add(dedupe_key)
+        events_by_noc[noc].append(event_data)
 
     print(f"Fetched medal events for {len(events_by_noc)} countries")
 

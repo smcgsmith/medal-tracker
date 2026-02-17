@@ -431,6 +431,67 @@ def fetch_daily_doubles(winner_rows):
     df = df.groupby("noc").sum().reset_index()
     return df, results
 
+
+def clean_event_text(value):
+    return re.sub(r"\s+", " ", str(value).strip())
+
+
+def reconcile_country_events(events, target_gold, target_silver, target_bronze):
+    """Deduplicate and cap event rows so dropdown medals match banner totals."""
+    targets = {
+        "gold": max(0, int(target_gold)),
+        "silver": max(0, int(target_silver)),
+        "bronze": max(0, int(target_bronze)),
+    }
+
+    deduped = []
+    seen = set()
+    for evt in events or []:
+        medal = normalize_text(evt.get("medal", ""))
+        if medal not in targets:
+            continue
+
+        event_name = clean_event_text(evt.get("event", ""))
+        athlete = clean_event_text(evt.get("athlete", ""))
+        url = clean_event_text(evt.get("url", ""))
+        key = (medal, normalize_text(event_name), normalize_text(athlete))
+        if key in seen:
+            continue
+        seen.add(key)
+
+        deduped.append(
+            {
+                "medal": medal,
+                "event": event_name,
+                "athlete": athlete,
+                "url": url,
+            }
+        )
+
+    remaining = targets.copy()
+    reconciled = []
+    for evt in deduped:
+        medal = evt["medal"]
+        if remaining[medal] <= 0:
+            continue
+        reconciled.append(evt)
+        remaining[medal] -= 1
+
+    for medal in ["gold", "silver", "bronze"]:
+        while remaining[medal] > 0:
+            reconciled.append(
+                {
+                    "medal": medal,
+                    "event": "Event details pending",
+                    "athlete": "",
+                    "url": "",
+                }
+            )
+            remaining[medal] -= 1
+
+    return reconciled
+
+
 def load_medals_cache():
     if MEDALS_CACHE_FILE.exists():
         return normalize_medals_df(pd.read_csv(MEDALS_CACHE_FILE))
@@ -1219,8 +1280,18 @@ if __name__ == "__main__":
             flag2 = noc_to_flag(row["noc_2"])
 
             # Get event data for both countries
-            events1 = EVENT_DATA.get(row["noc_1"], [])
-            events2 = EVENT_DATA.get(row["noc_2"], [])
+            events1 = reconcile_country_events(
+                EVENT_DATA.get(row["noc_1"], []),
+                row["gold_1"],
+                row["silver_1"],
+                row["bronze_1"],
+            )
+            events2 = reconcile_country_events(
+                EVENT_DATA.get(row["noc_2"], []),
+                row["gold_2"],
+                row["silver_2"],
+                row["bronze_2"],
+            )
 
             # Build stacked medals display (🥇🥇🥈🥈🥉 etc)
             total_gold = int(row['gold_1'] + row['gold_2'])
@@ -1247,7 +1318,10 @@ if __name__ == "__main__":
                     medal_icon = medal_icons.get(evt["medal"], "🏅")
                     athlete = evt.get("athlete", "")
                     athlete_str = f' <span class="athlete-name">({athlete})</span>' if athlete else ""
-                    events_html += f'<a href="{evt["url"]}" target="_blank" class="event-link"><span class="event-item">{medal_icon} {evt["event"]}{athlete_str}</span></a>'
+                    if evt.get("url"):
+                        events_html += f'<a href="{evt["url"]}" target="_blank" class="event-link"><span class="event-item">{medal_icon} {evt["event"]}{athlete_str}</span></a>'
+                    else:
+                        events_html += f'<div class="event-link"><span class="event-item">{medal_icon} <span style="color: #888;">{evt["event"]}</span></span></div>'
                 events_html += '</div>'
 
             # Country 2 events
@@ -1257,7 +1331,10 @@ if __name__ == "__main__":
                     medal_icon = medal_icons.get(evt["medal"], "🏅")
                     athlete = evt.get("athlete", "")
                     athlete_str = f' <span class="athlete-name">({athlete})</span>' if athlete else ""
-                    events_html += f'<a href="{evt["url"]}" target="_blank" class="event-link"><span class="event-item">{medal_icon} {evt["event"]}{athlete_str}</span></a>'
+                    if evt.get("url"):
+                        events_html += f'<a href="{evt["url"]}" target="_blank" class="event-link"><span class="event-item">{medal_icon} {evt["event"]}{athlete_str}</span></a>'
+                    else:
+                        events_html += f'<div class="event-link"><span class="event-item">{medal_icon} <span style="color: #888;">{evt["event"]}</span></span></div>'
                 events_html += '</div>'
 
             if not events_html:
