@@ -133,6 +133,7 @@ DAILY_DOUBLE_EVENTS = [
         "sport": "Alpine skiing",
         "gender": "Men's",
         "event_keywords": ["slalom"],
+        "event_exact": ["slalom"],
     },
 ]
 
@@ -212,6 +213,46 @@ def parse_medals_payload(payload):
             return rows
     return []
 
+
+def clean_noc(value):
+    if pd.isna(value):
+        return ""
+    return str(value).strip().upper()
+
+
+def normalize_medals_df(medals_df):
+    columns = ["noc", "country", "gold", "silver", "bronze", "total"]
+    if medals_df is None:
+        return pd.DataFrame(columns=columns)
+
+    cleaned = medals_df.copy()
+    if "noc" not in cleaned.columns:
+        cleaned["noc"] = ""
+    if "country" not in cleaned.columns:
+        cleaned["country"] = ""
+
+    cleaned["noc"] = cleaned["noc"].map(clean_noc)
+    cleaned["country"] = cleaned["country"].fillna("").astype(str).str.strip()
+
+    for medal_col in ["gold", "silver", "bronze", "total"]:
+        if medal_col not in cleaned.columns:
+            cleaned[medal_col] = 0
+        cleaned[medal_col] = (
+            pd.to_numeric(cleaned[medal_col], errors="coerce")
+            .fillna(0)
+            .astype(int)
+        )
+
+    cleaned = cleaned[cleaned["noc"] != ""].copy()
+    cleaned = cleaned.sort_values(
+        ["total", "gold", "silver", "bronze", "country"],
+        ascending=[False, False, False, False, True],
+    )
+    cleaned = cleaned.drop_duplicates(subset=["noc"], keep="first")
+
+    return cleaned[columns]
+
+
 def fetch_medals():
     try:
         response = requests.get(WIKI_MEDAL_URL, headers=HEADERS, timeout=20)
@@ -271,14 +312,8 @@ def fetch_medals():
 
         medal_table.loc[:, "noc"] = medal_table["country"].map(COUNTRY_TO_NOC)
 
-        medals_df = medal_table[
-            ["noc", "country", "gold", "silver", "bronze", "total"]
-        ].copy()
-
-        medals_df[["gold", "silver", "bronze", "total"]] = (
-            medals_df[["gold", "silver", "bronze", "total"]]
-            .fillna(0)
-            .astype(int)
+        medals_df = normalize_medals_df(
+            medal_table[["noc", "country", "gold", "silver", "bronze", "total"]].copy()
         )
 
         medals_df.to_csv(MEDALS_CACHE_FILE, index=False)
@@ -299,20 +334,42 @@ def normalize_text(value):
     return re.sub(r"\s+", " ", str(value).strip().lower())
 
 
-def matches_daily_double(winner_row, event_config):
-    sport = normalize_text(winner_row.get("sport", ""))
-    gender = normalize_text(winner_row.get("gender", ""))
-    event_name = normalize_text(winner_row.get("event", ""))
+def canonical_text(value):
+    return re.sub(r"[^a-z0-9]+", "", normalize_text(value))
 
-    required_sport = normalize_text(event_config.get("sport", ""))
-    required_gender = normalize_text(event_config.get("gender", ""))
+
+def matches_daily_double(winner_row, event_config):
+    sport = canonical_text(winner_row.get("sport", ""))
+    gender = canonical_text(winner_row.get("gender", ""))
+    event_name = canonical_text(winner_row.get("event", ""))
+
+    required_sport = canonical_text(event_config.get("sport", ""))
+    required_gender = canonical_text(event_config.get("gender", ""))
     required_keywords = [
-        normalize_text(keyword) for keyword in event_config.get("event_keywords", [])
+        canonical_text(keyword) for keyword in event_config.get("event_keywords", [])
+    ]
+    required_exclude_keywords = [
+        canonical_text(keyword)
+        for keyword in event_config.get("event_exclude_keywords", [])
+    ]
+    required_exact = [
+        canonical_text(exact_name) for exact_name in event_config.get("event_exact", [])
     ]
 
     if required_sport and sport != required_sport:
         return False
     if required_gender and gender != required_gender:
+        return False
+
+    required_keywords = [keyword for keyword in required_keywords if keyword]
+    required_exclude_keywords = [
+        keyword for keyword in required_exclude_keywords if keyword
+    ]
+    required_exact = [exact_name for exact_name in required_exact if exact_name]
+
+    if required_exact and event_name not in required_exact:
+        return False
+    if any(keyword in event_name for keyword in required_exclude_keywords):
         return False
 
     return all(keyword in event_name for keyword in required_keywords)
@@ -324,10 +381,11 @@ def fetch_daily_doubles(winner_rows):
         event["name"]: {"event": event["name"], "results": []}
         for event in DAILY_DOUBLE_EVENTS
     }
+    seen_rows = {event["name"]: set() for event in DAILY_DOUBLE_EVENTS}
 
     for winner_row in winner_rows:
         medal = normalize_text(winner_row.get("medal", ""))
-        noc = winner_row.get("noc")
+        noc = clean_noc(winner_row.get("noc"))
 
         if medal not in ["gold", "silver", "bronze"] or not noc:
             continue
@@ -335,6 +393,17 @@ def fetch_daily_doubles(winner_rows):
         for event in DAILY_DOUBLE_EVENTS:
             if not matches_daily_double(winner_row, event):
                 continue
+
+            row_key = (
+                canonical_text(winner_row.get("sport", "")),
+                canonical_text(winner_row.get("gender", "")),
+                canonical_text(winner_row.get("event", "")),
+                medal,
+                noc,
+            )
+            if row_key in seen_rows[event["name"]]:
+                break
+            seen_rows[event["name"]].add(row_key)
 
             rows.append(
                 {
@@ -363,7 +432,7 @@ def fetch_daily_doubles(winner_rows):
 
 def load_medals_cache():
     if MEDALS_CACHE_FILE.exists():
-        return pd.read_csv(MEDALS_CACHE_FILE)
+        return normalize_medals_df(pd.read_csv(MEDALS_CACHE_FILE))
     return None
 
 
@@ -386,11 +455,22 @@ def load_friends():
     missing = required_columns - set(friends_df.columns)
     if missing:
         raise ValueError(f"friends.csv missing columns: {', '.join(sorted(missing))}")
+
+    for col in ["friend", "country_1", "country_2"]:
+        friends_df[col] = friends_df[col].fillna("").astype(str).str.strip()
+    friends_df["noc_1"] = friends_df["noc_1"].map(clean_noc)
+    friends_df["noc_2"] = friends_df["noc_2"].map(clean_noc)
+
+    friends_df = friends_df[friends_df["friend"] != ""].copy()
     return friends_df
 
 
 def build_friend_scores(friends_df, medals_df, double_df):
-    medals_df = medals_df.rename(columns={"country": "country_name"})
+    friends_df = friends_df.copy()
+    friends_df["noc_1"] = friends_df["noc_1"].map(clean_noc)
+    friends_df["noc_2"] = friends_df["noc_2"].map(clean_noc)
+
+    medals_df = normalize_medals_df(medals_df).rename(columns={"country": "country_name"})
     medals_1 = medals_df.add_suffix("_1")
     medals_2 = medals_df.add_suffix("_2")
 
