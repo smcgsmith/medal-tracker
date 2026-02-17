@@ -221,6 +221,16 @@ def clean_noc(value):
     return str(value).strip().upper()
 
 
+def noc_to_flag(noc):
+    noc = clean_noc(noc)
+    if not noc:
+        return ""
+    iso = NOC_TO_ISO.get(noc)
+    if not iso:
+        return ""
+    return "".join(chr(127397 + ord(c)) for c in iso)
+
+
 def normalize_medals_df(medals_df):
     columns = ["noc", "country", "gold", "silver", "bronze", "total"]
     if medals_df is None:
@@ -436,7 +446,9 @@ def clean_event_text(value):
     return re.sub(r"\s+", " ", str(value).strip())
 
 
-def reconcile_country_events(events, target_gold, target_silver, target_bronze):
+def reconcile_country_events(
+    events, target_gold, target_silver, target_bronze, fill_missing=True
+):
     """Deduplicate and cap event rows so dropdown medals match banner totals."""
     targets = {
         "gold": max(0, int(target_gold)),
@@ -477,17 +489,18 @@ def reconcile_country_events(events, target_gold, target_silver, target_bronze):
         reconciled.append(evt)
         remaining[medal] -= 1
 
-    for medal in ["gold", "silver", "bronze"]:
-        while remaining[medal] > 0:
-            reconciled.append(
-                {
-                    "medal": medal,
-                    "event": "Event details pending",
-                    "athlete": "",
-                    "url": "",
-                }
-            )
-            remaining[medal] -= 1
+    if fill_missing:
+        for medal in ["gold", "silver", "bronze"]:
+            while remaining[medal] > 0:
+                reconciled.append(
+                    {
+                        "medal": medal,
+                        "event": "Event details pending",
+                        "athlete": "",
+                        "url": "",
+                    }
+                )
+                remaining[medal] -= 1
 
     return reconciled
 
@@ -693,7 +706,7 @@ def make_plot(df):
 # -----------------------------
 # HTML output
 # -----------------------------
-def build_html(table_html, plot_html, last_updated):
+def build_html(table_html, plot_html, last_updated, medal_table_html=""):
     return f"""<!doctype html>
 <html lang=\"en\">
 <head>
@@ -990,6 +1003,96 @@ def build_html(table_html, plot_html, last_updated):
       border-bottom: 1px solid #f0f0f0;
     }}
 
+    /* Medal Table Banner */
+    .medal-table-banner {{
+      background: #fff;
+      border-radius: 15px;
+      padding: 20px;
+      margin-top: 30px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    }}
+    .medal-table-banner h2 {{
+      color: #333;
+      margin: 0 0 16px 0;
+    }}
+    .medal-country-header {{
+      display: grid;
+      grid-template-columns: 70px 1fr 70px 70px 70px 80px 50px;
+      gap: 10px;
+      padding: 10px 8px;
+      font-weight: bold;
+      color: #666;
+      border-bottom: 1px solid #e9ecef;
+    }}
+    .medal-country-row {{
+      display: grid;
+      grid-template-columns: 70px 1fr 70px 70px 70px 80px 50px;
+      gap: 10px;
+      align-items: center;
+      padding: 12px 8px;
+      border-bottom: 1px solid #f0f0f0;
+      cursor: pointer;
+      transition: background 0.2s ease;
+    }}
+    .medal-country-row:hover {{
+      background: #f8f9fa;
+    }}
+    .medal-country-order {{
+      font-weight: bold;
+      text-align: center;
+    }}
+    .medal-country-name {{
+      font-size: 1.1em;
+      font-weight: 600;
+      min-width: 0;
+    }}
+    .medal-country-metric {{
+      text-align: center;
+      font-weight: 700;
+    }}
+    .medal-country-toggle {{
+      text-align: center;
+      font-size: 1.9em;
+      color: #2563eb;
+      line-height: 1;
+      user-select: none;
+    }}
+    .medal-country-panel {{
+      display: none;
+      margin: 0 0 8px 70px;
+      padding: 10px 0 6px 0;
+    }}
+    .medal-country-panel.open {{
+      display: block;
+    }}
+    .medal-country-events {{
+      background: #f8f9fa;
+      border: 1px solid #e9ecef;
+      border-radius: 10px;
+      overflow: hidden;
+    }}
+    .medal-country-event-link {{
+      display: block;
+      color: #2563eb;
+      text-decoration: none;
+      padding: 8px 12px;
+      border-bottom: 1px solid #e9ecef;
+      transition: all 0.2s;
+    }}
+    .medal-country-event-link:last-child {{
+      border-bottom: 0;
+    }}
+    .medal-country-event-link:hover {{
+      color: #1d4ed8;
+      padding-left: 16px;
+      background: #fff;
+    }}
+    .medal-country-empty {{
+      color: #888;
+      padding: 10px 12px;
+      font-style: italic;
+    }}
+
     /* Mobile Responsive */
     @media (max-width: 768px) {{
       body {{
@@ -1068,6 +1171,32 @@ def build_html(table_html, plot_html, last_updated):
         padding: 8px 5px;
         font-size: 0.9em;
       }}
+      .medal-table-banner {{
+        padding: 15px;
+      }}
+      .medal-country-header,
+      .medal-country-row {{
+        grid-template-columns: 38px 1fr 36px 36px 36px 42px 26px;
+        gap: 6px;
+        padding-left: 4px;
+        padding-right: 4px;
+      }}
+      .medal-country-name {{
+        font-size: 0.95em;
+      }}
+      .medal-country-order,
+      .medal-country-metric {{
+        font-size: 0.9em;
+      }}
+      .medal-country-toggle {{
+        font-size: 1.4em;
+      }}
+      .medal-country-panel {{
+        margin-left: 10px;
+      }}
+      .medal-country-event-link {{
+        font-size: 0.9em;
+      }}
     }}
 
     @media (max-width: 480px) {{
@@ -1106,6 +1235,17 @@ def build_html(table_html, plot_html, last_updated):
         font-size: 1.1em;
         min-width: 50px;
       }}
+      .medal-country-header,
+      .medal-country-row {{
+        grid-template-columns: 28px 1fr 30px 30px 30px 36px 24px;
+      }}
+      .medal-country-name {{
+        font-size: 0.88em;
+      }}
+      .medal-country-order,
+      .medal-country-metric {{
+        font-size: 0.82em;
+      }}
     }}
   </style>
 </head>
@@ -1131,6 +1271,10 @@ def build_html(table_html, plot_html, last_updated):
       <div class=\"scoreboard-container\">
         {table_html}
       </div>
+    </div>
+
+    <div class=\"section\">
+      {medal_table_html}
     </div>
 
   </div>
@@ -1193,6 +1337,16 @@ def build_html(table_html, plot_html, last_updated):
       }}
     }}
 
+    function toggleMedalCountry(panelId) {{
+      const panel = document.getElementById(panelId);
+      const toggle = document.getElementById('toggle-' + panelId);
+      if (!panel || !toggle) {{
+        return;
+      }}
+      const isOpen = panel.classList.toggle('open');
+      toggle.textContent = isOpen ? '−' : '+';
+    }}
+
     // Start animation after page load
     setTimeout(revealNext, 500);
   </script>
@@ -1235,6 +1389,98 @@ def build_daily_double_table(results):
     """
 
 
+def build_medal_table_banner(medals_df, event_data):
+    medals_df = normalize_medals_df(medals_df).sort_values(
+        ["gold", "silver", "bronze", "total", "country"],
+        ascending=[False, False, False, False, True],
+    ).reset_index(drop=True)
+
+    medal_order = {"gold": 0, "silver": 1, "bronze": 2}
+    medal_icons = {"gold": "🥇", "silver": "🥈", "bronze": "🥉"}
+    country_rows = []
+
+    for idx, row in medals_df.iterrows():
+        noc = clean_noc(row.get("noc", ""))
+        country = clean_event_text(row.get("country", "")) or noc
+        order = idx + 1
+        panel_id = f"medal-country-{noc.lower()}"
+
+        events = reconcile_country_events(
+            event_data.get(noc, []),
+            row["gold"],
+            row["silver"],
+            row["bronze"],
+            fill_missing=False,
+        )
+        events = sorted(
+            events,
+            key=lambda evt: (
+                medal_order.get(normalize_text(evt.get("medal", "")), 99),
+                clean_event_text(evt.get("event", "")).lower(),
+                clean_event_text(evt.get("athlete", "")).lower(),
+            ),
+        )
+
+        if events:
+            event_rows = []
+            for evt in events:
+                medal = normalize_text(evt.get("medal", ""))
+                event_name = clean_event_text(evt.get("event", ""))
+                athlete = clean_event_text(evt.get("athlete", ""))
+                url = clean_event_text(evt.get("url", ""))
+                medal_icon = medal_icons.get(medal, "🏅")
+                athlete_str = (
+                    f' <span class="athlete-name">({athlete})</span>' if athlete else ""
+                )
+                if url:
+                    event_rows.append(
+                        f'<a href="{url}" target="_blank" class="medal-country-event-link"><span class="event-item">{medal_icon} {event_name}{athlete_str}</span></a>'
+                    )
+                else:
+                    event_rows.append(
+                        f'<div class="medal-country-event-link"><span class="event-item">{medal_icon} {event_name}{athlete_str}</span></div>'
+                    )
+            events_html = "".join(event_rows)
+        else:
+            events_html = '<div class="medal-country-empty">No medal events available yet.</div>'
+
+        flag = noc_to_flag(noc)
+        country_rows.append(
+            f"""
+            <div class="medal-country-row" onclick="toggleMedalCountry('{panel_id}')">
+              <div class="medal-country-order">{order}</div>
+              <div class="medal-country-name">{flag} {country}</div>
+              <div class="medal-country-metric">{int(row['gold'])}</div>
+              <div class="medal-country-metric">{int(row['silver'])}</div>
+              <div class="medal-country-metric">{int(row['bronze'])}</div>
+              <div class="medal-country-metric">{int(row['total'])}</div>
+              <div class="medal-country-toggle" id="toggle-{panel_id}">+</div>
+            </div>
+            <div class="medal-country-panel" id="{panel_id}">
+              <div class="medal-country-events">
+                {events_html}
+              </div>
+            </div>
+            """
+        )
+
+    return f"""
+    <div class="medal-table-banner">
+      <h2>Medal Table</h2>
+      <div class="medal-country-header">
+        <div>Order</div>
+        <div>NOC</div>
+        <div>G</div>
+        <div>S</div>
+        <div>B</div>
+        <div>Total</div>
+        <div></div>
+      </div>
+      {''.join(country_rows)}
+    </div>
+    """
+
+
 # -----------------------------
 # Main
 # -----------------------------
@@ -1257,14 +1503,6 @@ if __name__ == "__main__":
     # Fetch medal events dynamically
     EVENT_DATA = fetch_medal_events(winner_rows)
     print(f"Loaded events for {len(EVENT_DATA)} countries")
-
-    def noc_to_flag(noc):
-        if not isinstance(noc, str):
-            return ""
-        iso = NOC_TO_ISO.get(noc)
-        if not iso:
-            return ""
-        return "".join(chr(127397 + ord(c)) for c in iso)
 
     def build_pretty_table(df):
         rows = []
@@ -1384,9 +1622,15 @@ if __name__ == "__main__":
     last_updated = pd.Timestamp.utcnow().strftime("%Y-%m-%d %H:%M UTC")
 
     daily_double_html = build_daily_double_table(double_results)
+    medal_table_html = build_medal_table_banner(medals_df, EVENT_DATA)
 
     OUTPUT_FILE.write_text(
-        build_html(table_html + daily_double_html, plot_html, last_updated)
+        build_html(
+            table_html + daily_double_html,
+            plot_html,
+            last_updated,
+            medal_table_html=medal_table_html,
+        )
     )
 
 
